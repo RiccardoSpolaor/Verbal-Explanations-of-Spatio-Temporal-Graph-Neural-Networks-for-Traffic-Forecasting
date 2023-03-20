@@ -1,34 +1,46 @@
 import torch
 from torch import nn
 
-class MAELoss(nn.Module):
+def _get_mask(y_true: torch.FloatTensor, missing_value: float = 0.) -> torch.FloatTensor:
+    mask = (y_true != missing_value)
+    return mask
+
+def _get_masked_predictions(y_pred: torch.FloatTensor, mask: torch.FloatTensor) -> torch.FloatTensor:
+    return y_pred * mask
+
+class MAE(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.mae = nn.L1Loss()
+        self.mae = nn.L1Loss(reduction='none')
 
     def forward(self, y_pred, y_true):
-        return self.mae(y_pred, y_true)
+        mask = _get_mask(y_true)
+        y_pred = _get_masked_predictions(y_pred, mask)
+        res = self.mae(y_pred, y_true)
+        return res.sum() / mask.sum()
 
-class RMSELoss(nn.Module):
+class RMSE(nn.Module):
     def __init__(self):
         super().__init__()
-        self.mse = nn.MSELoss()
+        self.mse = nn.MSELoss(reduction='none')
 
     def forward(self, y_pred, y_true):
-        return torch.sqrt(self.mse(y_pred,y_true))
+        mask = _get_mask(y_true)
+        y_pred = _get_masked_predictions(y_pred, mask)
+        res = self.mse(y_pred,y_true)
+        return torch.sqrt(res.sum() / mask.sum())
 
-class S_MAPELoss(nn.Module):
+class MAPE(nn.Module):
     def __init__(self, epsilon: float = 1e-8) -> None:
         super().__init__()
+        self.mae = nn.L1Loss(reduction='none')
         self.epsilon = epsilon
 
     def forward(self, y_pred, y_true):
-        # TODO: This is MAE
-        #return torch.mean((y_pred - y_true).abs() / (y_true.abs() + 1e-8))
-        #abs_diff = torch.abs(y_pred - y_true)
-        #error = abs_diff / torch.abs(y_true)
-        #error[torch.isinf(error)] = 0.
-        # TODO: This is sMAPE, which can handle 0 values unlike MAPE
-        divisor = y_true.abs() + y_pred.abs() + self.epsilon
-        error = 2*(y_true - y_pred).abs() / divisor
-        return torch.mean(error)
+        mask = _get_mask(y_true)
+        y_pred = _get_masked_predictions(y_pred, mask)
+        res = self.mae(y_pred, y_true)
+        res = res / y_true.abs()
+        res[torch.isinf(res)] = 0.
+        res[torch.isnan(res)] = 0.
+        return res.sum() / mask.sum()
