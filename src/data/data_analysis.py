@@ -22,6 +22,7 @@ def group_dataframe_by_period(
         grouped = grouped.sum()
     elif aggregation == 'mean':
         grouped = grouped.mean()
+
     if period == 'day_of_week':
         grouped = grouped.groupby(grouped.index.day_of_week)
         grouped = grouped.mean()
