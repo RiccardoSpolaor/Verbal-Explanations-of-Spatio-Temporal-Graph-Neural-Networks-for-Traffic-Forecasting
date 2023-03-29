@@ -2,6 +2,7 @@ import math
 import torch
 from torch import nn
 
+
 class S_GNN(nn.Module):
     """
     Apply a Spatial GNN module to capture the spatial relations of
@@ -11,12 +12,12 @@ class S_GNN(nn.Module):
         super().__init__()
         # Module to obtain the latent representation of the input.
         self.latent_encoder = nn.Sequential(
-            nn.Linear(n_features, n_features),
-            nn.Linear(n_features, n_features)
+            nn.Linear(n_features, n_features, bias=False),
+            nn.Linear(n_features, n_features // 2, bias=False)
         )
 
         # Linear layer to model the spatial feature extraction.
-        self.linear = nn.Linear(n_features, n_features)
+        self.linear = nn.Linear(n_features, n_features, bias=False)
 
         # Set the refined adjacency matrix.
         self.A_hat = A_hat
@@ -32,6 +33,7 @@ class S_GNN(nn.Module):
 
         # Get the pair-wise relation between any road node.
         R = torch.softmax(S_stabilized, -1)
+        #R = torch.softmax(S, -1)
 
         # Get the sparsified relation matrix.
         A_hat = self.A_hat.expand_as(R)
@@ -40,7 +42,7 @@ class S_GNN(nn.Module):
 
         # Get refined degree matrix from the sparsified relation matrix.
         D_hat = R_hat.sum(-1) ** -.5
-        D_hat[torch.isinf(D_hat)] = 0.
+        # D_hat[torch.isinf(D_hat)] = 0.
         D_hat = torch.diag_embed(D_hat)
 
         # Apply the modified GCN operation.
@@ -55,16 +57,22 @@ class GRU(nn.Module):
     def __init__(self, n_input_features: int, n_hidden_features: int) -> None:
         super().__init__()
         # Update gate layers.
-        self.z_x_linear = nn.Linear(n_input_features, n_hidden_features)
-        self.z_h_linear = nn.Linear(n_hidden_features, n_hidden_features)
+        self.z_x_linear = nn.Linear(n_input_features, n_hidden_features,
+                                    bias=False)
+        self.z_h_linear = nn.Linear(n_hidden_features, n_hidden_features,
+                                    bias=False)
 
         # Reset gate layers.
-        self.r_x_linear = nn.Linear(n_input_features, n_hidden_features)
-        self.r_h_linear = nn.Linear(n_hidden_features, n_hidden_features)
+        self.r_x_linear = nn.Linear(n_input_features, n_hidden_features,
+                                    bias=False)
+        self.r_h_linear = nn.Linear(n_hidden_features, n_hidden_features,
+                                    bias=False)
 
         # State gate layers.
-        self.h_x_linear = nn.Linear(n_input_features, n_hidden_features)
-        self.h_h_linear = nn.Linear(n_hidden_features, n_hidden_features)
+        self.h_x_linear = nn.Linear(n_input_features, n_hidden_features,
+                                    bias=False)
+        self.h_h_linear = nn.Linear(n_hidden_features, n_hidden_features,
+                                    bias=False)
 
     def forward(self, x: torch.FloatTensor, h: torch.FloatTensor
                 ) -> torch.FloatTensor:
@@ -98,19 +106,21 @@ class Transformer(nn.Module):
         self.n_attention_heads = n_attention_heads
 
         # Linear layers to model the queries, keys and values.
-        self.queries_linear = nn.Linear(n_features, n_features)
-        self.keys_linear = nn.Linear(n_features, n_features)
-        self.values_linear = nn.Linear(n_features, n_features)
+        self.queries_linear = nn.Linear(n_features, n_features, bias=False)
+        self.keys_linear = nn.Linear(n_features, n_features, bias=False)
+        self.values_linear = nn.Linear(n_features, n_features, bias=False)
 
         # Normalization layers.
-        self.normalization = nn.BatchNorm2d(n_timesteps)
-        self.normalization_out = nn.BatchNorm2d(n_timesteps)
+        self.normalization = nn.BatchNorm2d(
+            n_timesteps, track_running_stats=False)
+        self.normalization_out = nn.BatchNorm2d(
+            n_timesteps, track_running_stats=False)
 
         # Multi-layer feed forward module.
         self.feed_forward = nn.Sequential(
-            nn.Linear(n_features, n_features),
+            nn.Linear(n_features, n_features, bias=False),
             nn.ReLU(),
-            nn.Linear(n_features, n_features)
+            nn.Linear(n_features, n_features, bias=False)
         )
 
     def forward(self, x):
@@ -133,8 +143,8 @@ class Transformer(nn.Module):
 
         # Apply the multi-head attention mechanism.
         H = Q_h @ K_h.transpose(-2, -1) / (self.n_attention_heads ** .5)
-        H = H @ V_h
         H = torch.softmax(H, -1)
+        H = H @ V_h
 
         # Split the result according to the batch size and re-concatenate.
         out = torch.cat(torch.split(H, x.shape[0], 0), -1)
@@ -146,11 +156,13 @@ class Transformer(nn.Module):
         norm = self.normalization(out)
 
         # Apply feed forward module.
-        out = self.feed_forward(out)
+        out = self.feed_forward(norm)
 
         # Apply residual connection and batch normalization.
         out += norm
-        return self.normalization_out(out)
+        out = self.normalization_out(out)
+
+        return out
 
 class PositionalEncoder(nn.Module):
     def __init__(self, n_features: int, n_timesteps: int) -> None:
@@ -162,12 +174,12 @@ class PositionalEncoder(nn.Module):
         positions = torch.arange(n_timesteps).unsqueeze(1)
 
         # Get the divisor term for the positional encoding.
-        divisor = torch.exp(torch.arange(0, n_features, 2) * 
+        divisor = torch.exp(torch.arange(0, n_features, 2) *
                             (math.log(10_000.) / n_features))
 
         # Compute the positional encodings.
-        positional_encoder[:, 0::2] = torch.sin(positions / divisor)
-        positional_encoder[:, 1::2] = torch.cos(positions / divisor)
+        positional_encoder[:, 0::2] = torch.sin(positions * divisor)
+        positional_encoder[:, 1::2] = torch.cos(positions * divisor)
 
         # Reshape to consider batch and feature dimensions.
         positional_encoder = positional_encoder.unsqueeze(0).unsqueeze(2)
