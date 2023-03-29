@@ -2,11 +2,12 @@ import torch
 from torch import nn
 import numpy as np
 
-from .modules import PositionalEncoder, GRU, S_GNN, Transformer
+from .modules import S_GNN, GRU, Transformer, PositionalEncoder
 
 
 class SpatialTemporalGNN(nn.Module):
-    def __init__(self, n_features: int, n_timesteps: int, A: np.ndarray,
+    def __init__(self, n_in_features: int, n_out_features: int,
+                 n_in_timesteps: int, n_out_timesteps: int, A: np.ndarray,
                  device: str, n_attention_heads: int = 4,
                  n_hidden_features: int = 64) -> None:
         super().__init__()
@@ -18,36 +19,42 @@ class SpatialTemporalGNN(nn.Module):
                          requires_grad=False, device=device)
         A_hat = A + torch.eye(A.shape[0], A.shape[1], device=device)
 
+        # Set the encoder to extract the hidden features.
+        self.encoder = nn.Linear(n_in_features, n_hidden_features, bias=False)
+
         # Set the list of S-GNN modules.
         self.s_gnns = nn.ModuleList(
-            [S_GNN(n_features, A_hat) for _ in range(n_timesteps)])
+            [S_GNN(n_hidden_features, A_hat) for _ in range(n_in_timesteps)])
 
         # Set the list of hidden S-GNN modules.
         self.hidden_s_gnns = nn.ModuleList(
-            [S_GNN(n_hidden_features, A_hat) for _ in range(n_timesteps - 1)])
+            [S_GNN(n_hidden_features, A_hat)
+             for _ in range(n_in_timesteps - 1)])
 
         # Set the list of GRU modules.
         self.grus = nn.ModuleList(
-            [GRU(n_features, n_hidden_features) for _ in range(n_timesteps)])
+            [GRU(n_hidden_features, n_hidden_features)
+             for _ in range(n_in_timesteps)])
 
         # Set the positional encoder module.
         self.positional_encoder = PositionalEncoder(n_hidden_features,
-                                                    n_timesteps)
-        
-        # Set the multi head attention module.
-        self.transformer = Transformer(n_hidden_features, n_timesteps, n_attention_heads)
+                                                    n_in_timesteps)
 
-        #self.timeseries_feed_forward = nn.Sequential(
-        #    nn.Linear(len_timeseries, len_timeseries),
-        #    nn.ReLU(),
-        #    nn.Linear(len_timeseries, len_timeseries) # len_timeseries_out
-        #)
+        # Set the multi head attention module.
+        self.transformer = Transformer(n_hidden_features, n_in_timesteps,
+                                       n_attention_heads)
+
+        # Set the convolutional layer to augment the number of
+        # time steps channels to the output time steps.
+        self.timesteps_convolution = nn.Conv2d(
+            n_in_timesteps, n_out_timesteps, kernel_size=1, 
+            bias=False) if n_in_timesteps != n_out_timesteps else None
 
         # Set the multi-layer prediction head.
         self.prediction_head = nn.Sequential(
-            nn.Linear(n_hidden_features, n_hidden_features),
+            nn.Linear(n_hidden_features, n_hidden_features, bias=False),
             nn.ReLU(),
-            nn.Linear(n_hidden_features, n_features)
+            nn.Linear(n_hidden_features, n_out_features, bias=False)
         )
 
         # Push the model to the selected device.
@@ -62,12 +69,15 @@ class SpatialTemporalGNN(nn.Module):
             [batch_size, n_nodes, self.n_hidden_features],
             dtype=torch.float32, device=x.device)
 
+        # Encode the input by extracting hidden features.
+        out = self.encoder(x)
+
         # Set the output list of the GRU modules results.
         outs = []
 
         for i in range(len_timeseries):
             # Get the S_GNN output state at the given timestamp.
-            out_state = self.s_gnns[i](x[:,i])
+            out_state = self.s_gnns[i](out[:,i])
             # Get the hidden state at the previous timestamp.
             if i > 0:
                 hidden_state = self.hidden_s_gnns[i - 1](hidden_state)
@@ -86,8 +96,10 @@ class SpatialTemporalGNN(nn.Module):
         # Get the transformer layer results.
         out = self.transformer(out)
 
-        # Reshape to handle the number of output timeseries.
-        # out = out.permute(0, 2, 3, 1)
+        # Apply the convolution to extract the output timesteps.
+        if self.timesteps_convolution is not None:
+            out = self.timesteps_convolution(out)
 
         # Predict the results.
-        return self.prediction_head(out)
+        out = self.prediction_head(out)
+        return out
