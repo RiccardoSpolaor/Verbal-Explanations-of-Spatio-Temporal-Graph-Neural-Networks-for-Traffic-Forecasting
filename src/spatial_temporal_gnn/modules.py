@@ -5,10 +5,29 @@ from torch import nn
 
 class S_GNN(nn.Module):
     """
-    Apply a Spatial GNN module to capture the spatial relations of
-    an instance of a graph of a sequence.
+    A Spatial GNN module to capture the spatial relations of an
+    instance of a graph of a sequence.
+
+    Attributes
+    ----------
+    latent_encoder : Sequential
+        Module to obtain the latent representation of the input.
+    linear : Linear
+        Linear layer to model the spatial feature extraction.
+    A_hat : FloatTensor
+        Refined adjacency matrix.
     """
     def __init__(self, n_features: int, A_hat: torch.FloatTensor) -> None:
+        """
+        Initialize the Spatial GNN module.
+
+        Arguments
+        ---------
+        n_features : int
+            Number of input features.
+        A_hat : FloatTensor
+            Refined adjacency matrix.
+        """
         super().__init__()
         # Module to obtain the latent representation of the input.
         self.latent_encoder = nn.Sequential(
@@ -23,6 +42,19 @@ class S_GNN(nn.Module):
         self.A_hat = A_hat
 
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
+        """
+        Apply the forward pass to the Spatial GNN module to the input.
+
+        Arguments
+        ---------
+        x : FloatTensor
+            The input tensor.
+
+        Returns
+        -------
+        FloatTensor
+            The output tensor.
+        """
         # Get the latent representation of the input.
         p = self.latent_encoder(x)
 
@@ -53,8 +85,32 @@ class GRU(nn.Module):
     """
     Apply a Gated Recurrent Unit (GRU) RNN to a hidden representation
     of an instance of a graph of a sequence.
+    
+    Attributes
+    ----------
+    z_x_linear : Linear
+        Update gate layer for the input feature.
+    z_h_linear : Linear
+        Update gate layer for the hidden feature.
+    r_x_linear : Linear
+        Reset gate layer for the input feature
+    r_h_linear : Linear
+        Reset gate layer for the hidden feature
+    h_x_linear : Linear
+        State gate layer for the input feature
+    h_h_linear : Linear 
+        State gate layer for the hidden feature
     """
     def __init__(self, n_input_features: int, n_hidden_features: int) -> None:
+        """Initialize the GRU module.
+
+        Parameters
+        ----------
+        n_input_features : int
+            Number of features of the input state.
+        n_hidden_features : int
+            Number of features of the hidden state.
+        """
         super().__init__()
         # Update gate layers.
         self.z_x_linear = nn.Linear(n_input_features, n_hidden_features,
@@ -76,6 +132,21 @@ class GRU(nn.Module):
 
     def forward(self, x: torch.FloatTensor, h: torch.FloatTensor
                 ) -> torch.FloatTensor:
+        """
+        Compute the forward pass of the GRU module.
+        
+        Arguments
+        ---------
+        x : FloatTensor
+            Input tensor.
+        h : FloatTensor
+            Hidden state tensor.
+        
+        Returns
+        -------
+        FloatTensor
+            Output tensor.
+        """
         # Update Gate.
         z_x = self.z_x_linear(x)
         z_h = self.z_h_linear(h)
@@ -99,8 +170,37 @@ class Transformer(nn.Module):
     Apply the multi-head attention mechanism to the hidden representations
     of the graph sequences for a global understanding of the time
     relation.
+
+    Attributes
+    ----------
+    n_attention_heads: int
+        Number of attention heads.
+    queries_linear: Linear
+        Linear layer to model the queries.
+    keys_linear: Linear
+        Linear layer to model the keys.
+    values_linear: Linear
+        Linear layer to model the values.
+    normalization: BatchNorm2d
+        Normalization layer.
+    normalization_out: BatchNorm2d
+        Output normalization layer.
+    feed_forward: Sequential
+        Multi-layer feed forward module.
     """
-    def __init__(self, n_features: int, n_timesteps: int, n_attention_heads: int) -> None:
+    def __init__(self, n_features: int, n_timesteps: int,
+                 n_attention_heads: int) -> None:
+        """Initialize the Transformer layer.
+
+        Parameters
+        ----------
+        n_features : int
+            Number of input features.
+        n_timesteps : int
+            Number of time steps.
+        n_attention_heads : int
+            Number of attention heads.
+        """
         super().__init__()
         # Set the number of attention heads.
         self.n_attention_heads = n_attention_heads
@@ -124,6 +224,19 @@ class Transformer(nn.Module):
         )
 
     def forward(self, x):
+        """
+        Compute the forward pass of the Transformer layer.
+        
+        Parameters
+        ----------
+        x : FloatTensor
+            The input tensor.
+        
+        Returns
+        -------
+        FloatTensor
+            The output tensor.
+        """
         # Get queries, keys and values.
         Q = self.queries_linear(x)
         K = self.keys_linear(x)
@@ -165,7 +278,25 @@ class Transformer(nn.Module):
         return out
 
 class PositionalEncoder(nn.Module):
+    """
+    Positional encoding module for time series data.
+    
+    Attributes
+    ----------
+    pe : FloatTensor
+        Positional encodings tensor.
+        
+    """
     def __init__(self, n_features: int, n_timesteps: int) -> None:
+        """Initialize the positional encoding module.
+
+        Parameters
+        ----------
+        n_features : int
+            Number of input features.
+        n_timesteps : int
+            Number of timesteps.
+        """
         super().__init__()
         # Initialize the positional encoder.
         positional_encoder = torch.zeros(n_timesteps, n_features)
@@ -188,4 +319,16 @@ class PositionalEncoder(nn.Module):
         self.register_buffer('pe', positional_encoder)
 
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
+        """Compute the forward pass of the Positional Encoding module.
+
+        Parameters
+        ----------
+        x : FloatTensor
+            The input tensor.
+
+        Returns
+        -------
+        FloatTensor
+            The output tensor.
+        """
         return x + torch.autograd.Variable(self.pe, requires_grad=False)

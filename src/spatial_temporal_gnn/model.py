@@ -6,10 +6,68 @@ from .modules import S_GNN, GRU, Transformer, PositionalEncoder
 
 
 class SpatialTemporalGNN(nn.Module):
+    """
+    A Spatial-Temporal Graph Neural Network.
+    It takes a series of graph time steps and computes the next
+    requested timesteps.
+
+    Attributes
+    ----------
+    n_hidden_features : int
+        Number of hidden features.
+    encoder : Linear
+        Encoder to extract the hidden features.
+    s_gnns : torch.nn.ModuleList
+        List of S-GNN modules.
+    hidden_s_gnns : ModuleList
+        List of hidden S-GNN modules.
+    grus : ModuleList
+        List of GRU modules.
+    positional_encoder : PositionalEncoder
+        Positional encoder module.
+    transformer : Transformer
+        Multi-head attention module.
+    timesteps_convolution : Conv2d | None
+        Convolutional layer to augment the number of time steps
+        channels to the output time steps. Initialized solely if
+        the number of input time steps is different to the number
+        of output time steps.
+    prediction_head : Sequential
+        Multi-layer prediction head.
+
+    Methods
+    -------
+    forward(x: FloatTensor) -> FloatTensor
+        Computes the forward pass of the model.
+    """
     def __init__(self, n_in_features: int, n_out_features: int,
                  n_in_timesteps: int, n_out_timesteps: int, A: np.ndarray,
                  device: str, n_attention_heads: int = 4,
                  n_hidden_features: int = 64) -> None:
+        """Initialize the Spatial-Temporal Graph Neural Network.
+
+        Parameters
+        ----------
+        n_in_features : int
+            Number of input features.
+        n_out_features : int
+            Number of output features.
+        n_in_timesteps : int
+            Number of input time steps.
+        n_out_timesteps : int
+            Number of output time steps.
+        A : numpy.ndarray
+            Adjacency matrix representing the spatial distance
+            among nodes.
+        device : str
+            Device on which the model is assigned (e.g. "cpu",
+            "cuda").
+        n_attention_heads : int, optional
+            Number of attention heads for the multi-head attention
+            module, by default 4.
+        n_hidden_features : int, optional
+            Number of hidden features to extract, by default 64.
+        """
         super().__init__()
         # Set the number of hidden features.
         self.n_hidden_features = n_hidden_features
@@ -60,7 +118,19 @@ class SpatialTemporalGNN(nn.Module):
         # Push the model to the selected device.
         self.to(device)
 
-    def forward(self, x: torch.FloatTensor):
+    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
+        """Compute the forward pass of the model.
+
+        Parameters
+        ----------
+        x : FloatTensor
+            The input tensor.
+
+        Returns
+        -------
+        FloatTensor
+            The output tensor.
+        """
         # Get the input dimensions.
         batch_size, len_timeseries, n_nodes, _ = x.shape
 
