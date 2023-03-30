@@ -400,10 +400,7 @@ def _plot_subplot(
     # Plot the legend.
     plt.legend()
 
-def plot_training_history(
-    history: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray,
-                   np.ndarray, np.ndarray]
-    ) -> None:
+def plot_training_history(history: Dict[str, np.ndarray]) -> None:
     """Plot the training history of the model.
 
     Parameters
