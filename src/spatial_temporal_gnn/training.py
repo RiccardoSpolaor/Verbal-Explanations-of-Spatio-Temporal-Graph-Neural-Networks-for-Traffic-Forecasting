@@ -404,12 +404,12 @@ def plot_training_history(
     history: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray,
                    np.ndarray, np.ndarray]
     ) -> None:
-    """Plot the training history of a machine learning model.
+    """Plot the training history of the model.
 
     Parameters
     ----------
-    history : tuple of ndarray
-        A tuple containing the training history values, including:
+    history : { str: ndarray }
+        A dictionary containing the training history values, including:
         * Train MAE (Mean Absolute Error) history.
         * Validation MAE history.
         * Train RMSE (Root Mean Squared Error) history.
