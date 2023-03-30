@@ -8,7 +8,8 @@ import torch
 
 
 def set_random_seed(random_seed: int = 42) -> None:
-    """Set the random seed for reproducibility. The seed is set for the
+    """
+    Set the random seed for reproducibility. The seed is set for the
     random library, the numpy library and the pytorch library.
 
     Parameters
