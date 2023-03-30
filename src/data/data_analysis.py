@@ -66,7 +66,8 @@ def get_node_values_with_location_dataframe(
 
 def get_node_values_statistics_dataframe(
     node_values: np.ndarray, feature_names: List[str]) -> pd.DataFrame:
-    """Get a pandas dataframe from a numpy array of features
+    """
+    Get a pandas dataframe from a numpy array of features
     which is useful for statistical evaluations.
     The resulting dataframe will contain for each row an instance
     of a node at a certain timestep and the columns will present
@@ -104,7 +105,8 @@ def get_node_values_statistics_dataframe(
 
 def plot_features_distribution(statistics_df: pd.DataFrame, bins: List[int],
                                x_labels: List[str], title: str) -> None:
-    """Plot the distribution of each column feature from a dataframe
+    """
+    Plot the distribution of each column feature from a dataframe
     collecting the feature information of each observation.
 
     Parameters

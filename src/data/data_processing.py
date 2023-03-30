@@ -9,7 +9,8 @@ TimeAggregation = Literal['time_of_day', 'day_of_week', 'hour', 'minute',
 TIME_AGGREGATION_TUPLE = get_args(TimeAggregation)
 
 class Scaler():
-    """Class defining a scaler to apply standard scaling individually
+    """
+    Class defining a scaler to apply standard scaling individually
     to each feature of a dataset or some instancrs of a dataset. 
     The scaling is based on the mean and standard deviation computed
     on the dataset used for initialization.
@@ -42,7 +43,8 @@ class Scaler():
             self.std = torch.std(x, dim=(-3, -2))
 
     def scale(self, x: torch.FloatTensor) -> torch.FloatTensor:
-        """Scale the provided dataset or series instances through
+        """
+        Scale the provided dataset or series instances through
         standard scaling.
 
         Parameters
@@ -63,7 +65,8 @@ class Scaler():
         return x
 
     def un_scale(self, x: torch.FloatTensor) -> torch.FloatTensor:
-        """Bring a dataset or a series of instances that have
+        """
+        Bring a dataset or a series of instances that have
         been previously scaled through standard scaling to their
         original non-scaled representation.
 
@@ -87,7 +90,8 @@ class Scaler():
 def get_node_values_numpy_matrix(
     node_values_df: pd.DataFrame, time_aggregations: List[TimeAggregation]
     ) -> np.ndarray:
-    """Get a numpy array containing the speed values of the nodes
+    """
+    Get a numpy array containing the speed values of the nodes
     at different timestamps from a specific dataframe.
     The returning array will have the following shape (T, N, F), where:
     * T is the number of timesteps.
@@ -130,7 +134,8 @@ def _get_encoded_time_information(
     node_values_df: pd.DataFrame,
     aggregate_by: TimeAggregation
     ) -> np.ndarray:
-    """Get the encoded time information at each timestamp for each node
+    """
+    Get the encoded time information at each timestamp for each node
     aggregated according to the `aggregate_by` feature.
 
     Parameters
@@ -198,7 +203,8 @@ def _get_encoded_time_information(
 def get_dataset_by_sliding_window(
     dataset: np.ndarray, x_stepsize: int, y_stepsize: int
     ) -> Tuple[np.ndarray, np.ndarray]:
-    """Apply a sliding window of size (`x_stepsize` + `y_stepsize`)
+    """
+    Apply a sliding window of size (`x_stepsize` + `y_stepsize`)
     to the input dataset in order to obtain a division of it (`x`, `y`)
     where:
     * The first `x_stepsize` elements captured by the window are

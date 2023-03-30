@@ -1,5 +1,5 @@
 import pickle
-from typing import Dict, get_args, List, Literal, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -9,7 +9,8 @@ MPH_TO_KMH_FACTOR = 1.609344
 
 def get_node_values_dataframe(
     hdf_file_path: str, turn_in_kmph: bool = True) -> pd.DataFrame:
-    """Get the dataframe containing the speed values of the nodes
+    """
+    Get the dataframe containing the speed values of the nodes
     at different timestamps from a specific `hdf` file.
     The returning dataframe will have the different timestamps as
     indices and each column refers to a specific node. The cells
@@ -44,7 +45,8 @@ def get_node_values_dataframe(
 def get_adjacency_matrix(
     adj_matrix_file_path: str
     ) -> Tuple[List[str], Dict[str, int], np.ndarray]:
-    """Get the adjacency matrix structured data from a pickle file.
+    """
+    Get the adjacency matrix structured data from a pickle file.
     The adjacency matrix is a (N, N) shaped matrix, where N is
     the number of nodes. Each cell contains the spatial distance
     information among the two considered nodes.
