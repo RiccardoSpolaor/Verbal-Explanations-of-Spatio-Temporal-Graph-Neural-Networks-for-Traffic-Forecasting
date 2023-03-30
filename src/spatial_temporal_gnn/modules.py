@@ -1,3 +1,7 @@
+"""
+Module containing the modules of the Spatial-Temporal Graph
+Neural Network pytorch model.
+"""
 import math
 import torch
 from torch import nn

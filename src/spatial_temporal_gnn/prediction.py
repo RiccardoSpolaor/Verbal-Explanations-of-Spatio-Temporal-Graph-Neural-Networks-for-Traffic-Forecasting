@@ -11,6 +11,36 @@ def get_ground_truth_and_predictions(
     model: SpatialTemporalGNN, dataloader: DataLoader, device: str,
     scaler: Scaler, n_timestamps_to_predict: Optional[int] = None,
     use_standardized_scale: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Get the ground truth and predictions of a Spatial-Temporal GNN
+    model for a given dataloader.
+
+    Parameters
+    ----------
+    model : SpatialTemporalGNN
+        The Spatial-Temporal GNN model to use for making the predictions.
+    dataloader : DataLoader
+        The dataloader containing the input data.
+    device : str
+        The device to use for computing the predictions (e.g. "cpu"
+        or "cuda").
+    scaler : Scaler
+        The stcaler object to use for scaling the input and output data.
+    n_timestamps_to_predict : int, optional
+        The number of timestamps to predict. If not None, only the first 
+        `n_timestamps_to_predict` timestamps will be predicted.
+        By default None.
+    use_standardized_scale : bool, optional
+        If True, the output data will be scaled using the standardized
+        scaling instead of the original scaling, by default False.
+
+    Returns
+    -------
+    ndarray
+        The ground truth values as a numpy array. 
+    ndarray
+        The respective predicted values as a numpy array.
+    """
     torch.cuda.empty_cache()
 
     y_true_list = []
