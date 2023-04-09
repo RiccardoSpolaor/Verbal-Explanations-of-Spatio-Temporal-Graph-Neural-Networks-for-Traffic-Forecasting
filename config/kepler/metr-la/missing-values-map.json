@@ -16,9 +16,23 @@
                         },
                         "isVisible": true,
                         "visConfig": {
-                            "radius": 10,
+                            "radiusRange": [
+                                10,
+                                40
+                            ],
                             "filled": true
                         }
+                    },
+                    "visualChannels": {
+                        "colorField": {
+                            "name": "Total missing values",
+                            "type": "real"
+                        },
+                        "sizeField": {
+                            "name": "Total missing values",
+                            "type": "real"
+                        },
+                        "sizeScale": "sqrt"
                     }
                 }
             ],
@@ -29,6 +43,10 @@
                             {
                                 "name": "sensor_id",
                                 "format": null
+                            },
+                            {
+                                "name": "Total missing values",
+                                "format": ".2%"
                             }
                         ]
                     },

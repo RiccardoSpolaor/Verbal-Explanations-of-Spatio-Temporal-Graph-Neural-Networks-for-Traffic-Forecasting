@@ -5,35 +5,35 @@
             "filters": [
                 {
                     "dataId": [
-                        "Metr-LA average speed per node per week of the year"
+                        "data"
                     ],
-                    "id": "nuja3cwgd",
+                    "id": "se0vr0gv",
                     "name": [
                         "datetime"
                     ],
                     "type": "timeRange",
                     "value": [
-                        1332404190000,
-                        1333098063000
+                        1330927200000,
+                        1330927574000
                     ],
                     "enlarged": true,
                     "plotType": "histogram",
                     "animationWindow": "free",
                     "yAxis": null,
-                    "speed": 1
+                    "speed": 0.3
                 }
             ],
             "layers": [
                 {
-                    "id": "6m3kezg",
-                    "type": "point",
+                    "id": "mp1heel",
+                    "type": "cluster",
                     "config": {
-                        "dataId": "Metr-LA average speed per node per week of the year",
+                        "dataId": "data",
                         "label": "Point",
                         "color": [
-                            248,
-                            149,
-                            112
+                            241,
+                            92,
+                            23
                         ],
                         "highlightColor": [
                             252,
@@ -43,31 +43,13 @@
                         ],
                         "columns": {
                             "lat": "latitude",
-                            "lng": "longitude",
-                            "altitude": null
+                            "lng": "longitude"
                         },
                         "isVisible": true,
                         "visConfig": {
-                            "radius": 10,
-                            "fixedRadius": false,
                             "opacity": 0.8,
-                            "outline": false,
-                            "thickness": 2,
-                            "strokeColor": null,
+                            "clusterRadius": 50,
                             "colorRange": {
-                                "name": "Global Warming",
-                                "type": "sequential",
-                                "category": "Uber",
-                                "colors": [
-                                    "#5A1846",
-                                    "#900C3F",
-                                    "#C70039",
-                                    "#E3611C",
-                                    "#F1920E",
-                                    "#FFC300"
-                                ]
-                            },
-                            "strokeColorRange": {
                                 "name": "Global Warming",
                                 "type": "sequential",
                                 "category": "Uber",
@@ -82,9 +64,9 @@
                             },
                             "radiusRange": [
                                 10,
-                                20
+                                40
                             ],
-                            "filled": true
+                            "colorAggregation": "average"
                         },
                         "hidden": false,
                         "textLabel": [
@@ -107,30 +89,23 @@
                     },
                     "visualChannels": {
                         "colorField": {
-                            "name": "Average speed",
+                            "name": "Speed",
                             "type": "real"
                         },
-                        "colorScale": "quantile",
-                        "strokeColorField": null,
-                        "strokeColorScale": "quantile",
-                        "sizeField": {
-                            "name": "Average speed",
-                            "type": "real"
-                        },
-                        "sizeScale": "sqrt"
+                        "colorScale": "quantize"
                     }
                 }
             ],
             "interactionConfig": {
                 "tooltip": {
                     "fieldsToShow": {
-                        "Metr-LA average speed per node per week of the year": [
+                        "data": [
                             {
                                 "name": "sensor_id",
                                 "format": null
                             },
                             {
-                                "name": "Average speed",
+                                "name": "Speed",
                                 "format": null
                             },
                             {

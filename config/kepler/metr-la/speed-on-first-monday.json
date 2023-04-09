@@ -2,18 +2,38 @@
     "version": "v1",
     "config": {
         "visState": {
-            "filters": [],
+            "filters": [
+                {
+                    "dataId": [
+                        "data"
+                    ],
+                    "id": "se0vr0gv",
+                    "name": [
+                        "datetime"
+                    ],
+                    "type": "timeRange",
+                    "value": [
+                        1330927200000,
+                        1330927574000
+                    ],
+                    "enlarged": true,
+                    "plotType": "histogram",
+                    "animationWindow": "free",
+                    "yAxis": null,
+                    "speed": 0.3
+                }
+            ],
             "layers": [
                 {
-                    "id": "5xprfeq",
+                    "id": "tnjnk5r",
                     "type": "point",
                     "config": {
-                        "dataId": "Metr-LA total missing values per node",
+                        "dataId": "data",
                         "label": "Point",
                         "color": [
-                            246,
-                            209,
-                            138
+                            241,
+                            92,
+                            23
                         ],
                         "highlightColor": [
                             252,
@@ -62,7 +82,7 @@
                             },
                             "radiusRange": [
                                 10,
-                                20
+                                40
                             ],
                             "filled": true
                         },
@@ -87,15 +107,15 @@
                     },
                     "visualChannels": {
                         "colorField": {
-                            "name": "Missing Values",
-                            "type": "integer"
+                            "name": "Speed",
+                            "type": "real"
                         },
                         "colorScale": "quantile",
                         "strokeColorField": null,
                         "strokeColorScale": "quantile",
                         "sizeField": {
-                            "name": "Missing Values",
-                            "type": "integer"
+                            "name": "Speed",
+                            "type": "real"
                         },
                         "sizeScale": "sqrt"
                     }
@@ -104,13 +124,17 @@
             "interactionConfig": {
                 "tooltip": {
                     "fieldsToShow": {
-                        "Metr-LA total missing values per node": [
+                        "data": [
                             {
                                 "name": "sensor_id",
                                 "format": null
                             },
                             {
-                                "name": "Missing Values",
+                                "name": "Speed",
+                                "format": null
+                            },
+                            {
+                                "name": "datetime",
                                 "format": null
                             }
                         ]
