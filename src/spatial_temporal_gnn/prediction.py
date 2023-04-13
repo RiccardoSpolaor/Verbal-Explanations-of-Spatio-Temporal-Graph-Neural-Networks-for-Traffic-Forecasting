@@ -74,33 +74,40 @@ def get_ground_truth_and_predictions(
 
 def predict(model: SpatialTemporalGNN, x: Union[np.ndarray, torch.FloatTensor], 
             scaler: object, device: str,
-            n_timestamps_to_predict: Optional[int]) -> np.ndarray:
+            n_timestamps_to_predict: Optional[int] = None) -> np.ndarray:
     torch.cuda.empty_cache()
+    
+    predictions = []
 
     with torch.no_grad():
         x_shape = x.shape
         if type(x) is np.ndarray:
-            x = torch.tensor(x, type=np.float32)
+            x = torch.Tensor(x)
 
-        if len(x_shape == 3):
+        if len(x_shape) == 3:
             x = torch.unsqueeze(x, dim=0)
 
-        x = scaler.scale(x)
-        x = x.to(device)
+        for instance in x:
+            instance = scaler.scale(instance.unsqueeze(dim=0))
+            instance = instance.type(torch.float32).to(device)
 
-        # Compute output.
-        y_pred = model(x)
+            # Compute output.
+            y_pred = model(instance)
 
-        if n_timestamps_to_predict is not None:
-            y_pred = y_pred[:, : n_timestamps_to_predict]
+            if n_timestamps_to_predict is not None:
+                y_pred = y_pred[:, : n_timestamps_to_predict]
 
-        y_pred = scaler.un_scale(y_pred)
+            y_pred = scaler.un_scale(y_pred).squeeze(dim=0)
+            
+            predictions.append(y_pred.cpu().numpy())
 
-        if len(x_shape == 3):
-            y_pred = torch.squeeze(y_pred, dim=0)
+        predictions = np.array(predictions)
+
+        if len(x_shape) == 3:
+            predictions = torch.squeeze(predictions, dim=0)
 
     torch.cuda.empty_cache()
-    return y_pred.cpu().numpy()
+    return predictions
 
 def plot_results_comparison(
     y_true: np.ndarray, y_pred: np.ndarray, feature_names: List[str],
