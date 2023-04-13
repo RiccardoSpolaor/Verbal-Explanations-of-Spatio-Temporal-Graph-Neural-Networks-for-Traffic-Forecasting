@@ -4,8 +4,7 @@ import torch
 import numpy as np
 import pandas as pd
 
-TimeAggregation = Literal['time_of_day', 'day_of_week', 'hour', 'minute',
-                          'day_of_year']
+TimeAggregation = Literal['time_of_day', 'day_of_week']
 TIME_AGGREGATION_TUPLE = get_args(TimeAggregation)
 
 class Scaler():
@@ -27,7 +26,7 @@ class Scaler():
         standard deviation is defined for a specific feature of
         the dataset.
     """
-    def __init__(self, x: torch.FloatTensor) -> None:
+    def __init__(self, x: torch.FloatTensor, has_day_of_week: bool) -> None:
         """Initialize a `Scaler` instance.
 
         Parameters
@@ -36,11 +35,22 @@ class Scaler():
             The dataset on which the mean and standard deviation
             are computed as estimations to apply standard scaling
             to future instances of the same kind.
+        has_day_of_week : bool
+            Whether the dataset contains the day of the week as
+            a one-hot encoded feature or not.
         """
+        self.has_day_of_week = has_day_of_week
+
         with torch.no_grad():
             x = x.clone()
             self.mean = torch.mean(x, dim=(-3, -2))
             self.std = torch.std(x, dim=(-3, -2))
+            # If the dataset contains the day of the week as a one-hot
+            # encoded feature, then make sure that they are not scaled.
+            if has_day_of_week:
+                self.mean[-7:] = 0.
+                self.std[-7:] = 1.
+                
 
     def scale(self, x: torch.FloatTensor) -> torch.FloatTensor:
         """
@@ -105,8 +115,7 @@ def get_node_values_numpy_matrix(
     node_values_df : DataFrame
         The dataframe containing the speed values of the nodes at
         different timestamps.
-    time_aggregations : set of 'day_of_week' | 'hour' | 'minute' |
-    'day_of_year'
+    time_aggregations : list of 'time_of_day' | 'day_of_week'
         The set of methods by which the time features will be
         aggregated and encoded.
 
@@ -121,13 +130,107 @@ def get_node_values_numpy_matrix(
     # Expand the dimension of the dataframe to (T, N, F)
     node_values_np = np.expand_dims(node_values_df.to_numpy(), axis=-1)
 
-    _, _, n_features = node_values_np.shape
+    for t in time_aggregations:
+        if t == 'time_of_day':
+            node_values_np = _add_encoded_time_of_the_day(
+                node_values_np, node_values_df)
+        elif t == 'day_of_week':
+            node_values_np = _add_encoded_day_of_the_week(
+                node_values_np, node_values_df)
 
-    for i, t in enumerate(time_aggregations):
-        encoded_time = _get_encoded_time_information(node_values_df,
-                                                     aggregate_by=t)
-        node_values_np = np.insert(node_values_np, n_features + i,
-                                   values=encoded_time, axis=-1)
+    return node_values_np
+
+def _add_encoded_time_of_the_day(
+    node_values_np: np.ndarray, node_values_df: pd.DataFrame
+    ) -> np.ndarray:
+    """
+    Add a new feature to the node values numpy array containing
+    the time of the day encoded as a value between 0 and 1.
+
+    Parameters
+    ----------
+    node_values : ndarray
+        The numpy array containing features of the nodes at different
+        timestamps.
+    node_values_df : DataFrame
+        The dataframe containing the speed values of the nodes at
+        different timestamps.
+
+    Returns
+    -------
+    ndarray
+        The numpy array containing the features of the nodes at
+        different timestamps and the time of the day encoded as a value
+        between 0 and 1.
+    """
+    # Encode the time of the day.
+    time_of_the_day = np.array(
+        [d.hour * 60 + d.minute 
+         for d in pd.to_datetime(node_values_df.index.values)])
+
+    # Get the minimum and maximum values of the selected criteria.
+    min_value, max_value = (0, 23 * 60 + 59)
+    # Scale the time information between 0 and 1.
+    time_of_the_day = (time_of_the_day - min_value) / (max_value - min_value)
+
+    # Get the number of nodes in the dataframe.
+    _, n_nodes = node_values_df.shape
+
+    # Add a dimension to the time of the day array.
+    time_of_the_day = np.expand_dims(time_of_the_day, axis=-1)
+    # Repeat for each node the time information at a specific timestamp.
+    time_of_the_day = np.repeat(time_of_the_day, n_nodes, axis=1)
+
+    # Insert the time information as a new feature in the node values.
+    node_values_np = np.insert(node_values_np, node_values_np.shape[-1],
+                            values=time_of_the_day, axis=-1)
+
+    return node_values_np
+
+def _add_encoded_day_of_the_week(
+    node_values_np: np.ndarray, node_values_df: pd.DataFrame
+    ) -> np.ndarray:
+    """
+    Add a new feature to the node values numpy array containing
+    the day of the week encoded as a one-hot vector.
+
+    Parameters
+    ----------
+    node_values_np : ndarray
+        The numpy array containing the features of the nodes at
+        different timestamps.
+    node_values_df : DataFrame
+        The dataframe containing the speed values of the nodes at
+        different timestamps.
+
+    Returns
+    -------
+    ndarray
+        The numpy array containing the features of the nodes at
+        different timestamps and the day of the week encoded as a
+        one-hot vector.
+    """
+    # Encode the time of the day.
+    day_of_the_week = np.array(node_values_df.index.day_of_week)
+
+     # One hot encode the time information.
+    day_of_the_week = np.eye(7)[day_of_the_week]
+
+    # Get the number of nodes in the dataframe.
+    _, n_nodes = node_values_df.shape
+
+    # Add a dimension to the day of the week array.
+    day_of_the_week = np.expand_dims(day_of_the_week, axis=1)
+
+    # Repeat for each node the time information at a specific timestamp.
+    day_of_the_week = np.repeat(day_of_the_week, n_nodes, axis=1)
+
+    # Insert the day of the week information as the last 7 features of the last axis
+    node_values_np = np.concatenate((node_values_np, day_of_the_week), axis=-1)
+
+    #node_values_np = np.insert(node_values_np, node_values_np.shape[-1],
+    #                           values=day_of_the_week, axis=-1)
+
     return node_values_np
 
 def _get_encoded_time_information(
@@ -143,13 +246,11 @@ def _get_encoded_time_information(
     node_values_df : DataFrame
         The dataframe containing the speed values of the nodes at different
         timestamps.
-    aggregate_by : 'day_of_week' | 'hour' | 'minute' | 'day_of_year'
+    aggregate_by : 'time_of_day' ! 'day_of_week'
         The method by which the timestamps will be aggregated and then
         encoded.
-        * 'day_of_week': encodes the timestamps by day of the week [0-6].
-        * 'hour': encodes the timestamps by hour of the day [0-23].
-        * 'minute': encodes the timestamps by minute of the hour [0-59].
-        * 'day_of_year': encodes the timestamps by day of the year [0-365]. 
+        * 'time_of_day': encodes the timestamps by time of the day .
+        * 'day_of_week': encodes the timestamps by day of the week [0-6]. 
 
     Returns
     -------
@@ -167,36 +268,37 @@ def _get_encoded_time_information(
     grouping_criteria = {
         'time_of_day': [d.hour * 60 + d.minute 
                         for d in pd.to_datetime(node_values_df.index.values)],
-        'day_of_week': node_values_df.index.day_of_week,
-        'hour': node_values_df.index.hour,
-        'minute': node_values_df.index.minute,
-        'day_of_year': node_values_df.index.day_of_year
-    }
-
-    #Set the dictionary of minimum and maximum values by criteria.
-    min_max_by_criteria = {
-        'time_of_day': (0, 23 * 60 + 59),
-        'day_of_week': (0, 6),
-        'hour': (0, 23),
-        'minute': (0, 59),
-        'day_of_year': (0, 366)
+        'day_of_week': node_values_df.index.day_of_week
     }
 
     # Get the time information by criteria.
     time_information = np.array(grouping_criteria[aggregate_by])
 
-    # Get the minimum and maximum values of the selected criteria.
-    min_value, max_value = min_max_by_criteria[aggregate_by]
-    # Scale the time information between 0 and 1.
-    time_information = (time_information - min_value) / (max_value - min_value)
+    if aggregate_by == 'time_of_day':
+        # Get the minimum and maximum values of the selected criteria.
+        min_value, max_value = (0, 23 * 60 + 59)
+        # Scale the time information between 0 and 1.
+        time_information = (time_information - min_value) / (max_value - min_value)
 
-    # Get the number of nodes in the dataframe.
-    _, n_nodes = node_values_df.shape
+        # Get the number of nodes in the dataframe.
+        _, n_nodes = node_values_df.shape
 
-    # Add a dimension to the time information.
-    time_information = np.expand_dims(time_information, axis=-1)
-    # Repeat for each node the time information at a specific timestamp.
-    time_information = np.repeat(time_information, n_nodes, axis = 1)
+        # Add a dimension to the time information.
+        time_information = np.expand_dims(time_information, axis=-1)
+        # Repeat for each node the time information at a specific timestamp.
+        time_information = np.repeat(time_information, n_nodes, axis=1)
+    else:
+        # One hot encode the time information.
+        time_information = np.eye(7)[time_information]
+
+        # Get the number of nodes in the dataframe.
+        _, n_nodes = node_values_df.shape
+        
+        # Add a dimension to the time information.
+        time_information = np.expand_dims(time_information, axis=1)
+        
+        # Repeat for each node the time information at a specific timestamp.
+        time_information = np.repeat(time_information, n_nodes, axis=1)
 
     return time_information
 
