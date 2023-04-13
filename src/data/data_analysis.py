@@ -65,7 +65,8 @@ def get_node_values_with_location_dataframe(
     return node_values_location_df
 
 def get_node_values_statistics_dataframe(
-    node_values: np.ndarray, feature_names: List[str]) -> pd.DataFrame:
+    node_values: np.ndarray, feature_names: List[str],
+    has_day_of_the_week: bool) -> pd.DataFrame:
     """
     Get a pandas dataframe from a numpy array of features
     which is useful for statistical evaluations.
@@ -84,6 +85,9 @@ def get_node_values_statistics_dataframe(
     feature_names : list of str
         The name of the features that will be displayed in the resulting
         statistics dataframe.
+    has_day_of_the_week : bool
+        Whether the dataset has a day of the week one-hot encoded feature
+        vector or not.
 
     Returns
     -------
@@ -93,12 +97,16 @@ def get_node_values_statistics_dataframe(
     # Get the number of timesteps, nodes and features.
     n_timesteps, n_nodes, n_features = node_values.shape
 
-    assert len(feature_names) == n_features, \
-    'The length of the `feature_names` list must correspond to the' +\
-    'number of features in the `node_values` dataset.'
-
     # Reshape the `node_values` array as (T x N, F).
     node_values = np.reshape(node_values, (n_timesteps * n_nodes, n_features))
+
+    if has_day_of_the_week:
+        # Transform the day of the week one-hot encoded feature vector
+        # to a single integer representing the day of the week.
+        day_of_the_week = np.argmax(node_values[:, -7:], axis=1)
+        node_values = node_values[:, :-7]
+        node_values = np.concatenate(
+            (node_values, day_of_the_week[:, None]), axis=1)
 
     # Get the statistics dataframe.
     return pd.DataFrame(node_values, columns=feature_names)
