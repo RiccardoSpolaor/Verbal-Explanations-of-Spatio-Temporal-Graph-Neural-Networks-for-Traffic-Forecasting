@@ -4,8 +4,8 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
-# Set the constant factor to turn miles/hour into km/hour.
-MPH_TO_KMH_FACTOR = 1.609344
+from ..utils.config import MPH_TO_KMH_FACTOR
+
 
 def get_node_values_dataframe(
     hdf_file_path: str, turn_in_kmph: bool = True) -> pd.DataFrame:
