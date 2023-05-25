@@ -38,6 +38,8 @@ class SpatialTemporalGNN(nn.Module):
         of output time steps.
     prediction_head : Sequential
         Multi-layer prediction head.
+    device : str
+        Device on which the model is assigned (e.g. "cpu", "cuda").
 
     Methods
     -------
@@ -121,6 +123,7 @@ class SpatialTemporalGNN(nn.Module):
 
         # Push the model to the selected device.
         self.to(device)
+        self.device = device
 
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
         """Compute the forward pass of the model.
