@@ -68,7 +68,7 @@ def remove_features_by_events(
         The input spatial-temporal graph with the features not related
         to the events in the input event set removed.
     """
-    if isinstance(data, torch.FloatTensor):
+    if isinstance(data, torch.Tensor):
         filtered_data = data.clone()
     else:
         filtered_data = data.copy()
