@@ -146,7 +146,8 @@ def get_dataset_for_explainability(
     x: np.ndarray, y: np.ndarray, eps: float, min_samples: int,
     adj_distance_matrix: np.ndarray, temporal_distance_matrix: np.ndarray,
     congestion_max_speed: float = 60, free_flow_min_speed: float = 110,
-    is_kmph: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+    is_x_kmph: bool = False, is_y_kmph: bool = True
+    ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Build a dataset which target predictions are meaningful for
     explainability.
@@ -224,8 +225,9 @@ def get_dataset_for_explainability(
     y_for_explainability = np.array(y_for_explainability)
     
     # Convert the speed values to miles/h if needed.
-    if is_kmph:
+    if is_x_kmph:
         x_for_explainability = x_for_explainability / MPH_TO_KMH_FACTOR
+    if is_y_kmph:
         y_for_explainability = y_for_explainability / MPH_TO_KMH_FACTOR
 
     return x_for_explainability, y_for_explainability
