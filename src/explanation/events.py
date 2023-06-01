@@ -82,8 +82,8 @@ def remove_features_by_events(
     
     # Remove the day of week features if there are no day of week events
     # and if the graph contains more than the sole speed feature.
-    if n_features > 1 and not len(day_of_week_events):
-        filtered_data[..., -7:] = 0
+    '''if n_features > 1 and not len(day_of_week_events):
+        filtered_data[..., -7:] = 0'''
     
     # Loop through the time steps and nodes.
     for time_step in range(n_time_steps):
@@ -93,11 +93,11 @@ def remove_features_by_events(
             if (0, time_step, node) not in speed_events:
                 filtered_data[..., time_step, node, 0] = 0
 
-        # Remove the time of day features if there are no time of day
+        '''# Remove the time of day features if there are no time of day
         # events related to them and if the graph contains more than the
         # sole speed feature.
         if n_features > 1 and (1, time_step, None) not in time_of_day_events:
-            filtered_data[..., time_step, :, 1] = -1
+            filtered_data[..., time_step, :, 1] = -1'''
     
     return filtered_data
 
