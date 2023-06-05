@@ -287,7 +287,7 @@ def validate(
             
             # Repeat the target event for all the input events.
             target_repeated = target_event.unsqueeze(0).repeat(
-                input_events.shape[0], 1)
+                input_events.shape[0], 1).type(torch.float32).to(device=device)
 
             # Compute the correlation scores between each input event and
             # the target event.
