@@ -6,8 +6,9 @@ import pandas as pd
 def get_node_values_with_clusters_and_location_dataframe(
     node_values: np.ndarray, clusters: np.ndarray,
     node_pos_dict: Dict[int, str], locations_df: pd.DataFrame) -> pd.DataFrame:
-    """Get a pandas dataframe from a numpy array of node speed values
-    a numpy array of node clusters and a pandas dataframe of node locations.
+    """
+    Get a pandas dataframe from a numpy array of node speed values a numpy
+    array of node clusters and a pandas dataframe of node locations.
     The resulting dataframe has for each timestamp the value of the speed
     for each node, its cluster and the location of the node in the form of
     latitude and longitude.

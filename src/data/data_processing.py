@@ -127,6 +127,7 @@ def get_node_values_numpy_matrix(
     """
     # Get the numpy matrix of node values from the pandas dataframe.
     node_values_np = node_values_df.to_numpy()
+    times_np = node_values_df.index.values
     # Expand the dimension of the dataframe to (T, N, F)
     node_values_np = np.expand_dims(node_values_df.to_numpy(), axis=-1)
 
@@ -138,7 +139,16 @@ def get_node_values_numpy_matrix(
             node_values_np = _add_encoded_day_of_the_week(
                 node_values_np, node_values_df)
 
-    return node_values_np
+    # Add the timesteps as a last feature.
+    # Get the number of nodes in the dataframe.
+    _, n_nodes = node_values_df.shape
+
+    # Create a new column containing the time information.
+    node_times = np.expand_dims(node_values_df.index.values, axis=-1)
+    # Repeat for each node the time information at a specific timestamp.
+    node_times = np.repeat(node_times, n_nodes, axis=1)
+
+    return node_values_np, node_times
 
 def _add_encoded_time_of_the_day(
     node_values_np: np.ndarray, node_values_df: pd.DataFrame
@@ -303,7 +313,10 @@ def _get_encoded_time_information(
     return time_information
 
 def get_dataset_by_sliding_window(
-    dataset: np.ndarray, x_stepsize: int, y_stepsize: int
+    dataset: np.ndarray,
+    time_dataset: np.ndarray,
+    x_stepsize: int,
+    y_stepsize: int
     ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Apply a sliding window of size (`x_stepsize` + `y_stepsize`)
@@ -323,6 +336,8 @@ def get_dataset_by_sliding_window(
     dataset : ndarray
         The input numpy array that will be divided by the sliding
         window.
+    time_dataset : ndarray
+        The time information of the dataset.
     x_stepsize : int
         The number of first elements of the window that will be
         assigned to the first division of the dataset (`x`).
@@ -336,9 +351,13 @@ def get_dataset_by_sliding_window(
         The first division of the dataset.
     ndarray
         The second division of the dataset.
+    ndarray
+        The time information of the first division of the dataset.
+    ndarray
+        The time information of the second division of the dataset.
     """
     # Initialize the dataset divisions as empty lists.
-    x, y = [], []
+    x, x_time, y, y_time = [], [], [], []
     # Initialize the iteration count at zero.
     i = 0
 
@@ -354,10 +373,13 @@ def get_dataset_by_sliding_window(
         # Apply the sliding window on the data and assign the result
         # on the respective divisions.
         x.append(dataset[index : index + x_stepsize])
+        x_time.append(time_dataset[index : index + x_stepsize])
         y.append(dataset[index + x_stepsize : index + x_stepsize + y_stepsize])
+        y_time.append(
+            time_dataset[index + x_stepsize : index + x_stepsize + y_stepsize])
 
         # Increase the iteration count.
         i += 1
 
     # Stack the results.
-    return np.stack(x), np.stack(y)
+    return np.stack(x), np.stack(y), np.stack(x_time), np.stack(y_time)

@@ -143,10 +143,18 @@ def get_clusters(
     return clusters
 
 def get_dataset_for_explainability(
-    x: np.ndarray, y: np.ndarray, eps: float, min_samples: int,
-    adj_distance_matrix: np.ndarray, temporal_distance_matrix: np.ndarray,
-    congestion_max_speed: float = 60, free_flow_min_speed: float = 110,
-    is_x_kmph: bool = False, is_y_kmph: bool = True
+    x: np.ndarray,
+    y: np.ndarray,
+    x_time: np.ndarray,
+    y_time: np.ndarray,
+    eps: float,
+    min_samples: int,
+    adj_distance_matrix: np.ndarray,
+    temporal_distance_matrix: np.ndarray,
+    congestion_max_speed: float = 60,
+    free_flow_min_speed: float = 110,
+    is_x_kmph: bool = False,
+    is_y_kmph: bool = True
     ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Build a dataset which target predictions are meaningful for
@@ -164,6 +172,10 @@ def get_dataset_for_explainability(
         The input dataset.
     y : ndarray
         The predicted target dataset.
+    x_time : ndarray
+        The time information of the input dataset.
+    y_time : ndarray
+        The time information of the predicted target dataset.
     eps : float
         The maximum distance between two samples for one to be considered
         as in the neighborhood of the other.
@@ -197,9 +209,10 @@ def get_dataset_for_explainability(
     """
     # Initialize the resulting datasets.
     x_for_explainability, y_for_explainability = [], []
+    x_time_for_explainability, y_time_for_explainability = [], []
 
     # Iterate through the dataset instances.
-    for x_, y_ in zip(x[:100], y[:100]):
+    for x_, y_, x_t, y_t in zip(x, y, x_time, y_time):
         # Get the clusters of the target values.
         clusters = get_clusters(
             y_, adj_distance_matrix, temporal_distance_matrix, eps,
@@ -219,10 +232,14 @@ def get_dataset_for_explainability(
             if np.all(cluster_nodes_mean <= congestion_max_speed) or \
                 np.all(cluster_nodes_mean >= free_flow_min_speed):
                 x_for_explainability.append(x_)
+                x_time_for_explainability.append(x_t)
                 y_for_explainability.append(masked_y_)
+                y_time_for_explainability.append(y_t)
     # Turn the resulting datasets into numpy arrays.
     x_for_explainability = np.array(x_for_explainability)
     y_for_explainability = np.array(y_for_explainability)
+    x_time_for_explainability = np.array(x_time_for_explainability)
+    y_time_for_explainability = np.array(y_time_for_explainability)
     
     # Convert the speed values to miles/h if needed.
     if is_x_kmph:
@@ -230,4 +247,5 @@ def get_dataset_for_explainability(
     if is_y_kmph:
         y_for_explainability = y_for_explainability / MPH_TO_KMH_FACTOR
 
-    return x_for_explainability, y_for_explainability
+    return (x_for_explainability, y_for_explainability,
+            x_time_for_explainability, y_time_for_explainability)
