@@ -79,7 +79,8 @@ from sklearn.cluster import DBSCAN
 def get_clusters(
     instance: np.ndarray, adj_distance_matrix: np.ndarray,
     temporal_distance_matrix: np.ndarray, eps: float,
-    min_samples: int, speed_distance_weight: float = 3) -> np.ndarray:
+    min_samples: int, speed_distance_weight: float = 3,
+    remove_zeros: bool = False) -> np.ndarray:
     """
     Get the clusters of the given instance using the DBSCAN algorithm.
 
@@ -102,6 +103,9 @@ def get_clusters(
     speed_distance_weight : float, optional
         The weight of the speed distance in the clustering process,
         by default 3.
+    remove_zeros : bool, optional
+        Whether to remove the nodes that are not present in the instance
+        during the clustering process, by default False.
 
     Returns
     -------
@@ -111,10 +115,10 @@ def get_clusters(
     n_timesteps, n_nodes, _ = instance.shape
 
     # Reshape the instance to be a column vector.
-    instance = instance.reshape(-2, 1)
+    reshaped_instance = instance.reshape(-2, 1)
 
     # Compute the distance matrix between the speed of the nodes in the graph.
-    speed_distance_matrix = cdist(instance, instance, 'euclidean')
+    speed_distance_matrix = cdist(reshaped_instance, reshaped_instance, 'euclidean')
     # Normalize the distance matrix between 0 and 1.
     speed_distance_matrix /= np.max(speed_distance_matrix)
 
@@ -128,6 +132,16 @@ def get_clusters(
     # Set the distance between nodes that are not connected to an
     # unreachable value.
     distance_matrix[adj_distance_matrix == 1] = 1_000
+    
+    # Set the distance between nodes that are not present in the instance
+    # to an unreachable value.
+    print(reshaped_instance.shape)
+    if remove_zeros:
+        for i in range(n_timesteps):
+            for j in range(n_nodes):
+                if instance[i, j, 0] == 0:
+                    distance_matrix[i * n_nodes + j, :] = 1_000
+                    distance_matrix[:, i * n_nodes + j] = 1_000
 
     # Compute the clusters of the given instance using the DBSCAN algorithm.
     dbscan = DBSCAN(metric='precomputed', eps=eps, min_samples=min_samples,
@@ -139,6 +153,13 @@ def get_clusters(
 
     # Reshape the clusters array to have the same shape as the instance.
     clusters = clusters.reshape(n_timesteps, n_nodes, 1)
+    
+    # Set the ID of the new cluster.
+    new_cluster = -2
+
+    # Set the noise nodes that don't present null values to the new cluster.
+    if remove_zeros:
+        clusters[(instance != 0) & (clusters == -1)] = new_cluster
 
     return clusters
 
