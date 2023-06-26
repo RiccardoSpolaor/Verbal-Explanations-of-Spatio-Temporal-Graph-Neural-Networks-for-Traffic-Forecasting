@@ -1,7 +1,8 @@
-from typing import List
+from typing import List, Optional, Tuple
 import torch
 import numpy as np
 
+from ..events import remove_features_by_events
 from ...spatial_temporal_gnn.model import SpatialTemporalGNN
 from ...data.data_processing import Scaler
 from ...explanation.events import get_largest_event_set
@@ -109,3 +110,46 @@ def get_best_input_subset(
             print('mae:', - monte_carlo_tree_search.best_leaf[1])
     
     return monte_carlo_tree_search.best_leaf[0]
+
+def get_explanations_from_data(
+    x: np.ndarray,
+    y: np.ndarray,
+    adj_matrix: np.ndarray,
+    spatial_temporal_gnn: SpatialTemporalGNN,
+    navigator: Navigator,
+    scaler: Scaler,
+    n_rollouts: int = 20,
+    explanation_size: Optional[int] = None,
+    exploration_weight: int = 500,
+    top_n_input_events: int = 500
+    ) -> Tuple[np.ndarray, np.ndarray]:
+
+    explained_x, explained_y = [], []
+
+    for x_, y_ in zip(x, y):
+        if explanation_size is None:
+            explanation_size = min((y_.flatten() != 0).sum() * 2, 500)
+
+        subset = get_best_input_subset(
+            x_,
+            y_,
+            adj_matrix,
+            spatial_temporal_gnn,
+            navigator,
+            scaler,
+            n_rollouts=n_rollouts,
+            maximum_leaf_size=explanation_size,
+            exploration_weight=exploration_weight,
+            top_n_input_events=top_n_input_events)
+
+        # TODO: Fix this to add other events.
+        input_events_subset = [ ( 0, e[0], e[1] ) for e in subset.input_events ]
+
+        x_ = remove_features_by_events(x_, input_events_subset)
+
+        x_ = x_[..., :1]
+
+        explained_x.append(x_)
+        explained_y.append(y_)
+
+    return np.array(explained_x), np.array(explained_y)
