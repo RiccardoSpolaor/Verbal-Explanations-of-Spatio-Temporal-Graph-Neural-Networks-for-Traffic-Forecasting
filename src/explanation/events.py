@@ -48,7 +48,8 @@ def get_largest_event_set(
 
 def remove_features_by_events(
     data: Union[np.ndarray, torch.FloatTensor],
-    events: List[Tuple[int, Optional[int], Optional[int]]]
+    events: List[Tuple[int, Optional[int], Optional[int]]],
+    remove_value = 0.
     ) -> Union[np.ndarray, torch.FloatTensor]:
     """
     Remove the features of the input spatial-temporal graph that are
@@ -91,7 +92,7 @@ def remove_features_by_events(
             # Remove the speed features if there are no speed events
             # related to it.
             if (0, time_step, node) not in speed_events:
-                filtered_data[..., time_step, node, 0] = 0
+                filtered_data[..., time_step, node, 0] = remove_value
 
         '''# Remove the time of day features if there are no time of day
         # events related to them and if the graph contains more than the

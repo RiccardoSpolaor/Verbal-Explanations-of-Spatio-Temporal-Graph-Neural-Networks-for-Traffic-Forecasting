@@ -2,6 +2,7 @@ from typing import List
 from collections import defaultdict
 import math
 import torch
+import numpy as np
 
 from src.spatial_temporal_gnn.metrics import MAE
 from src.spatial_temporal_gnn.model import SpatialTemporalGNN
@@ -108,12 +109,14 @@ class Node():
         input_events = [[0, e[0], e[1]] for e in self.input_events]
         # Remove the features not corresponding to the input events in
         # the input data.
-        x_subset = remove_features_by_events(x, input_events)
-        x_subset = scaler.scale(x_subset)
 
         # Add the batch dimension to the data and add them to the
         # device.
-        x_subset = x_subset.unsqueeze(0).to(device)
+        x_subset = x.unsqueeze(0).to(device)
+        #x_subset = scaler.scale(x)
+        x_subset = scaler.scale(x_subset)
+        x_subset = remove_features_by_events(x_subset, input_events, remove_value=-1)#-2.25)
+        
         y = y.unsqueeze(0).to(device)
 
         # Predict the output graph.
@@ -200,7 +203,6 @@ class MonteCarloTreeSearch:
     def __init__(
         self,
         spatial_temporal_gnn: SpatialTemporalGNN,
-        navigator: Navigator,
         scaler: Scaler,
         x: torch.FloatTensor,
         y: torch.FloatTensor,
@@ -244,8 +246,6 @@ class MonteCarloTreeSearch:
         self.exploration_weight = exploration_weight
         # Set the Spatial Temporal Graph Neural Network.
         self.spatial_temporal_gnn = spatial_temporal_gnn
-        # Set the Navigator.
-        self.navigator = navigator
         # Set the scaler.
         self.scaler = scaler
         # Set the maximum leaf size.
@@ -332,11 +332,18 @@ class MonteCarloTreeSearch:
         # Get the node input events.
         input_events = [ e for e in node.input_events ]
         # Remove the first child from the children of the node.
-        input_events.remove(self.children[node][0])
+        if len(self.children[node]):
+            # Choose with increasing probability over the length of the
+            # children list the child to remove, the probability should sum up to 1.
+            #probs = np.linspace(0, 1., len(self.children[node]))[::-1]
+            # Get the index of the child to remove.
+            index = np.random.choice(len(self.children[node]))#, p=probs)
+            #index=0
+            input_events.remove(self.children[node][index])
+            # Delete the expanded child from the children of the node.
+            del self.children[node][index]
         # Expand the node in accordance to the removed child.
         self.expanded_children[node].append(Node(input_events))
-        # Delete the expanded child from the children of the node.
-        del self.children[node][0]
 
     def _simulate(self, node: Node) -> float:
         """
@@ -379,7 +386,7 @@ class MonteCarloTreeSearch:
             # Update the total visit count of the node.
             self.N[node] += 1
             # Update the total reward of the node.
-            self.C[node] += reward
+            self.C[node] = max(self.C[node], reward)
             # Update the reward.
             reward += 1
 
@@ -416,7 +423,9 @@ class MonteCarloTreeSearch:
             float
                 The UCT of the child node.
             """
-            return self.C[n] / (self.N[n] + 1e-10) + self.exploration_weight *\
-                math.sqrt(N_sum) / (self.N[n] + 1)
+            if self.N[n] == 0:
+                return float("inf")
+            return self.C[n] / (self.N[n]) + self.exploration_weight *\
+                math.sqrt(N_sum) / (self.N[n])
 
         return max(self.expanded_children[node], key=get_upper_confidence_bound)
