@@ -141,7 +141,7 @@ class Node():
         """
         return hash(frozenset(self.input_events))
 
-    def __eq__(self, node1: 'Node', node2: 'Node') -> bool:
+    def __eq__(self, node2: 'Node') -> bool:
         """Get whether or not two nodes are equal.
         A node is equal to another node if they have the same input
         events set.
@@ -158,7 +158,7 @@ class Node():
         bool
             Whether or not the two nodes are equal.
         """
-        return frozenset(node1.input_events) == frozenset(node2.input_events)
+        return frozenset(self.input_events) == frozenset(node2.input_events)
 
 class MonteCarloTreeSearch:
     """
