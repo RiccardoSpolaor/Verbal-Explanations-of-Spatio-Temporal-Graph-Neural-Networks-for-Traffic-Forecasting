@@ -3,52 +3,32 @@ import numpy as np
 import torch
 
 def get_largest_event_set(
-    data: np.ndarray) -> List[Tuple[int, Optional[int], Optional[int]]]:
+    x: np.ndarray
+    ) -> np.ndarray:
     """
     Get the largest event set from the input spatial-temporal graph.
-    Each event is represented by a tuple containing the event type, the
+    An event is defined as a positive value in the speed feature of the
+    input spatial-temporal graph.
+    Each event is represented by a tuple containing, the
     time step at which the event occurs, and the node at which the event
-    occurs. The second last element of the tuple is None if the event
-    type is related to the time of day or the day of week. The last
-    element of the tuple is None if the event type is related to the day
-    of week.
+    occurs. 
 
     Parameters
     ----------
-    data : ndarray
+    x : ndarray
         The input spatial-temporal graph from which the largest event set is
         obtained.
 
     Returns
     -------
-    list of (int, int | None, int | None)
+    ndarray
         The largest event set from the input spatial-temporal graph.
     """
-    # Get the number of time steps and nodes.
-    n_time_steps, n_nodes, n_features = data.shape[-3:]
-
-    # Get the largest event set related to the speed.
-    speed_events = [
-        (0, time_step, node) 
-        for time_step in range(n_time_steps) 
-        for node in range(n_nodes) 
-        if data[..., time_step, node, 0] > 0]
-    
-    if n_features == 1:
-        return speed_events
-
-    # Get the largest event set related to the time of day.
-    time_of_day_events = [
-        (1, time_step, None) for time_step in range(n_time_steps)]
-
-    # Get the largest event set related to the day of week.
-    day_of_week_events = [(2, None, None)]
-
-    return speed_events + time_of_day_events + day_of_week_events
+    return [tuple(e) for e in np.argwhere(x[..., 0] > 0)]
 
 def remove_features_by_events(
-    data: Union[np.ndarray, torch.FloatTensor],
-    events: List[Tuple[int, Optional[int], Optional[int]]],
+    x: Union[np.ndarray, torch.FloatTensor],
+    events: np.ndarray,
     remove_value = 0.
     ) -> Union[np.ndarray, torch.FloatTensor]:
     """
@@ -69,32 +49,68 @@ def remove_features_by_events(
         The input spatial-temporal graph with the features not related
         to the events in the input event set removed.
     """
-    if isinstance(data, torch.Tensor):
-        filtered_data = data.clone()
+    if isinstance(x, torch.Tensor):
+        x = x.clone()
+        # Create a tensor of the shape of x with all remove_value
+        filtered_x = torch.full_like(x[..., 0], remove_value)
     else:
-        filtered_data = data.copy()
+        x = x.copy()
+        filtered_x = np.full_like(x[..., 0], remove_value)
+
+    filtered_x[x[..., 0] == 0] = remove_value
+
+    for e in events:
+        filtered_x[e[0], e[1]] = x[e[0], e[1], 0]
+    
+    x[..., 0] = filtered_x
+    return x
+    
+    
+        
+    
+    
+    events_to_keep = [tuple([event[0], event[1], 0]) for event in events] + [tuple(i) for i in positive_indices]
+    
+    # On indices not in events to keep, put remove_value
+    if isinstance(x, torch.Tensor):
+        print(~torch.tensor(events_to_keep))
+        filtered_x[~torch.tensor(events_to_keep)] = remove_value
+    else:
+        filtered_x[~np.array(events_to_keep)] = remove_value
+    return filtered_x
+        
+        
+    # On indices not in events, put remove_value if the feature is not zero
+    filtered_x[filtered_x[..., 0] != 0] = remove_value
+    
+        
+    '''# Put remove value on the speed features that are not related to
+    # the events in the input event set.
+    speed_events = events[events[:, 0] == 0]
+        
+    np.argwhere(filtered_x[..., 0] > 0)
     # Get the number of time steps, nodes, and features.
-    n_time_steps, n_nodes, n_features = filtered_data.shape[-3:]
+    n_time_steps, n_nodes, _ = filtered_data.shape[-3:]
     
     # Get the events related to the speed, time of day, and day of week.
-    speed_events = [tuple(event) for event in events if event[0] == 0]
-    time_of_day_events = [tuple(event) for event in events if event[0] == 1]
-    day_of_week_events = [tuple(event) for event in events if event[0] == 2]
+    #speed_events = [tuple(event) for event in events if event[0] == 0]
+    #time_of_day_events = [tuple(event) for event in events if event[0] == 1]
+    #day_of_week_events = [tuple(event) for event in events if event[0] == 2]
     
     # Remove the day of week features if there are no day of week events
-    # and if the graph contains more than the sole speed feature.
+    # and if the graph contains more than the sole speed feature.'''
     '''if n_features > 1 and not len(day_of_week_events):
         filtered_data[..., -7:] = 0'''
     
-    # Loop through the time steps and nodes.
+    '''# Loop through the time steps and nodes.
     for time_step in range(n_time_steps):
         for node in range(n_nodes):
             # Remove the speed features if there are no speed events
             # related to it.
             if (0, time_step, node) not in speed_events:
-                filtered_data[..., time_step, node, 0] = remove_value
+                filtered_data[..., time_step, node, 0] = remove_value'''
 
-        '''# Remove the time of day features if there are no time of day
+    ''' # Remove the time of day features if there are no time of day
         # events related to them and if the graph contains more than the
         # sole speed feature.
         if n_features > 1 and (1, time_step, None) not in time_of_day_events:
