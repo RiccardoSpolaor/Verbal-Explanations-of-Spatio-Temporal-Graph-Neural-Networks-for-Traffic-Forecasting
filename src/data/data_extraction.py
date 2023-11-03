@@ -76,7 +76,9 @@ def get_adjacency_matrix(
     return adj_matrix_structure
 
 def get_locations_dataframe(
-    hdf_file_path: str, has_header: bool) -> pd.DataFrame:
+    hdf_file_path: str,
+    has_header: bool
+    ) -> pd.DataFrame:
     # Get the dataframe containing the latitude and longitude of each sensor.
     if has_header:
         locations_df = pd.read_csv(hdf_file_path, index_col='index')

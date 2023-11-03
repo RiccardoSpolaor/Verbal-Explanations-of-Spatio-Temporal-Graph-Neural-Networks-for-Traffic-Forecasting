@@ -1,8 +1,9 @@
-from typing import get_args, List, Literal, Tuple
+from typing import get_args, Dict, List, Literal, Tuple
 
 import torch
 import numpy as np
 import pandas as pd
+from geopy.distance import distance as haversine
 
 TimeAggregation = Literal['time_of_day', 'day_of_week']
 TIME_AGGREGATION_TUPLE = get_args(TimeAggregation)
@@ -383,3 +384,30 @@ def get_dataset_by_sliding_window(
 
     # Stack the results.
     return np.stack(x), np.stack(y), np.stack(x_time), np.stack(y_time)
+
+def get_distance_matrix(
+    node_locations_df: pd.DataFrame,
+    node_ids_dict: Dict[int, str]
+    ) -> np.ndarray:
+    # Build the distance matrix between the nodes.
+    distance_matrix = np.zeros((len(node_ids_dict), len(node_ids_dict)))
+
+    # Loop through each node.
+    for id_i, idx_i in node_ids_dict.items():
+        for id_j, idx_j in node_ids_dict.items():
+            # Get the latitude and longitude of the two nodes.
+            latitude_i = node_locations_df.loc[
+                node_locations_df['sensor_id'] == id_i].latitude.values[0]
+            longitude_i = node_locations_df.loc[
+                node_locations_df['sensor_id'] == id_i].longitude.values[0]
+            latitude_j = node_locations_df.loc[
+                node_locations_df['sensor_id'] == id_j].latitude.values[0]
+            longitude_j = node_locations_df.loc[
+                node_locations_df['sensor_id'] == id_j].longitude.values[0]
+            # Compute the haversine distance between the two nodes in miles
+            # and assign it to the distance matrix.
+            distance_matrix[idx_i, idx_j] = haversine(
+                (latitude_i, longitude_i),
+                (latitude_j, longitude_j)).miles
+
+    return distance_matrix
