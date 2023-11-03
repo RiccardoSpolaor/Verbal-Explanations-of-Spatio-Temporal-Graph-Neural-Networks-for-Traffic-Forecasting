@@ -1,57 +1,43 @@
-from typing import List
-from collections import defaultdict
+"""
+Module containing the Monte Carlo Tree Search (MCTS) algorithm.
+"""
 import math
+from copy import deepcopy
+from collections import defaultdict
+from typing import List, Tuple
+
 import torch
 import numpy as np
 
-from src.spatial_temporal_gnn.metrics import MAE
-from src.spatial_temporal_gnn.model import SpatialTemporalGNN
-from src.data.data_processing import Scaler
-from src.explanation.navigator.model import Navigator
-from src.explanation.events import (
-    remove_features_by_events, get_largest_event_set)
+from ..events import remove_features_by_events
+from ...spatial_temporal_gnn.metrics import MAE
+from ...spatial_temporal_gnn.model import SpatialTemporalGNN
+from ...data.data_processing import Scaler
 
 
 class Node():
     """
-    Class representing a node in the Monte Carlo Tree Search.
-    A node is a subset of input events. The children of a node are
-    the subsets of input events obtained by removing one event from
-    the node. The reward of a node is the negative Mean Absolute Error
-    (MAE) between the predicted output data, given the subset of input
-    events expressed by the node, and the actual output data.
+    Class representing a node in the Monte Carlo Tree.
+    A node is described by a list of input events. The reward of a node
+    is the reciprocal Mean Absolute Error (MAE) between the predicted
+    output data, given the subset of input events expressed by the node,
+    and the actual output data.
     
     Attributes
     ----------
-    input_events : list of list of float
+    input_events : list of (int, int)
         The input events expressed by the node.
     """
-    def __init__(self, input_events: List[List[float]]) -> None:
-        """Initialize the node.
+    def __init__(self, input_events: List[Tuple[int, int]]) -> None:
+        """
+        Initialize the node.
 
         Parameters
         ----------
-        input_events : list of list of float
+        input_events : list of (int, int)
             The input events expressed by the node.
         """
         self.input_events = input_events
-
-    def find_children(self) -> List[List[int]]:
-        """
-        Get all possible successors of the current node.
-
-        Returns
-        -------
-        set of Node
-            All possible successors of the current node.
-        """
-        children = []
-
-        for i, _ in enumerate(self.input_events):
-            input_events_subset = self.input_events[:i] + self.input_events[i+1:]
-            children.append(Node([ e for e in input_events_subset ]))
-
-        return children
 
     def is_terminal(self, leaf_size: int) -> bool:
         """
@@ -71,55 +57,66 @@ class Node():
         return len(self.input_events) <= leaf_size
 
     def reward(
-        self, spatial_temporal_gnn: SpatialTemporalGNN,
-        x: torch.FloatTensor, y: torch.FloatTensor,
-        scaler: Scaler) -> float:
+        self, 
+        x: torch.FloatTensor, 
+        y: torch.FloatTensor,
+        spatial_temporal_gnn: SpatialTemporalGNN,
+        scaler: Scaler,
+        mae_criterion: MAE,
+        remove_value: float = 0.
+        ) -> float:
         """
-        Get the reward of the current node in terms of the negative
+        Get the reward of the current node in terms of the reciprocal
         Mean Absolute Error (MAE) between the predicted output data,
         given the subset of input events expressed by the current node,
         and the actual output data.
 
         Parameters
         ----------
-        spatial_temporal_gnn : SpatialTemporalGNN
-            The Spatial Temporal GNN model used to predict the output
-            events.
         x : FloatTensor
             The input data.
         y : FloatTensor
             The output data.
+        spatial_temporal_gnn : SpatialTemporalGNN
+            The Spatial-Temporal GNN model used to predict the output
+            events.
         scaler : Scaler
             The scaler used to scale and un-scale the data.
+        mae_criterion : MAE
+            The MAE criterion used to compute the reward.
+        remove_value : float, optional
+            The value used to substitute the speed features of the 
+            input events not present in the description of the node,
+            by default -1.
 
         Returns
         -------
         float
-            The negative MAE between the predicted output data and the
+            The reciprocal MAE between the predicted output data and the
             actual output data.
         """
         # Clone the input data to avoid modifying it.
         x = x.clone()
-        # Set the MAE criterion.
-        mae_criterion = MAE()
         # Get the device of the spatial temporal GNN.
         device = spatial_temporal_gnn.device
 
-        # Set the input events as a list.
-        input_events = [[0, e[0], e[1]] for e in self.input_events]
-        # Remove the features not corresponding to the input events in
-        # the input data.
-
-        # Add the batch dimension to the data and add them to the
-        # device.
-        x_subset = x.unsqueeze(0).to(device)
-        #x_subset = scaler.scale(x)
+        # Get the subset of the input data corresponding to the input
+        # events of the node.
+        x_subset = remove_features_by_events(
+            x,
+            self.input_events,
+            remove_value=remove_value)
+        # Scale the input data.
         x_subset = scaler.scale(x_subset)
-        x_subset = remove_features_by_events(x_subset, input_events, remove_value=-1)#-2.25)
-        
+        # Add the batch dimension to the subset.
+        x_subset = x_subset.unsqueeze(0)
+        # Move the subset to the device.
+        x_subset = x_subset.to(device)
+
+        # Add the batch dimension to the output data.
         y = y.unsqueeze(0).to(device)
 
-        # Predict the output graph.
+        # Predict the output graph given the subset of the input data.
         y_pred = spatial_temporal_gnn(x_subset)
 
         # Scale the prediction.
@@ -127,13 +124,15 @@ class Node():
         # Remove the non-considered target features in the prediction.
         y_pred[y == 0] = 0
 
-        # Compute the reward as the negative MAE between the predicted
+        # Compute the reward as the reciprocal MAE between the predicted
         # output events and the actual output events.
-        reward = - mae_criterion(y_pred, y).item()
-        return reward
+        mae = mae_criterion(y_pred, y).item()
+        if mae == 0.:
+            return float('inf'), mae
+        return 1. / mae, mae
 
     def __hash__(self) -> int:
-        """Hash the node by the input events.
+        """Hash the node by the input events that describe it.
 
         Returns
         -------
@@ -142,7 +141,7 @@ class Node():
         """
         return hash(frozenset(self.input_events))
 
-    def __eq__(node1: 'Node', node2: 'Node') -> bool:
+    def __eq__(self, node1: 'Node', node2: 'Node') -> bool:
         """Get whether or not two nodes are equal.
         A node is equal to another node if they have the same input
         events set.
@@ -160,7 +159,6 @@ class Node():
             Whether or not the two nodes are equal.
         """
         return frozenset(node1.input_events) == frozenset(node2.input_events)
-        #return node1.input_events == node2.input_events
 
 class MonteCarloTreeSearch:
     """
@@ -170,90 +168,102 @@ class MonteCarloTreeSearch:
     
     Attributes
     ----------
-    C : DefaultDict
-        The dictionary of total reward of each node.
-    N : DefaultDict
-        The dictionary of total visit count for each node.
-    children : Dict
-        The dictionary of events that can be removed from a node to
-        obtain a child node.
-    expanded_children : Dict
-        The dictionary of expanded children of each node.
-    best_leaf : (Node, float)
-        The best leaf node found by the MCTS so far and its reward.
-    exploration_weight : int
-        The exploration weight used in the Upper Confidence Bound for
-        Trees (UCT) formula.
-    spatial_temporal_gnn : SpatialTemporalGNN
-        The Spatial Temporal Graph Neural Network used to get the
-        reward of a leaf node.
-    navigator : Navigator
-        The Navigator used to select which node to expand during the
-        tree search.
-    scaler : Scaler
-        The scaler used to scale and un-scale the data.
     x : FloatTensor
         The input data.
     y : FloatTensor
         The output data.
+    spatial_temporal_gnn : SpatialTemporalGNN
+        The Spatial Temporal Graph Neural Network used to get the
+        predictions from a leaf node.
+    scaler : Scaler
+        The scaler used to scale and un-scale the data.
     maximum_leaf_size : int
         The maximum number of events allowed in a leaf node.
+    exploration_weight : int
+        The exploration weight used in the Upper Confidence Bound for
+        Trees (UCT) formula.
+    remove_value : float
+        The value used to substitute the speed features of the input
+        events not present in the description of the node.
+    mae_criterion : MAE
+        The MAE criterion used to compute the reward.
+    C : DefaultDict
+        The dictionary of total reward of each node.
+    N : DefaultDict
+        The dictionary of total visit count for each node.
+    branching_actions : Dict
+        The dictionary of possible branching actions for each node,
+        that define how to expand them. A branching action is an
+        event of the input events set that can be removed to expand 
+        a child node.
+    expanded_children : Dict
+        The dictionary of expanded children of each node.
+    best_leaf : (Node, float)
+        The best leaf node found by the MCTS so far and its reward.
     """
 
     def __init__(
         self,
-        spatial_temporal_gnn: SpatialTemporalGNN,
-        scaler: Scaler,
         x: torch.FloatTensor,
         y: torch.FloatTensor,
+        spatial_temporal_gnn: SpatialTemporalGNN,
+        scaler: Scaler,
         maximum_leaf_size: int = 20,
-        exploration_weight: int = 1
+        exploration_weight: int = 1,
+        remove_value: float = 0.
         ) -> None:
-        """Initialize the MCTS.
+        """
+        Initialize the MCTS.
 
         Parameters
         ----------
-        spatial_temporal_gnn : SpatialTemporalGNN
-            The Spatial Temporal Graph Neural Network used to get the
-            reward of a leaf node.
-        navigator : Navigator
-            The Navigator used to select which node to expand during
-            the tree search.
-        scaler : Scaler
-            The scaler used to scale and un-scale the data.
         x : FloatTensor
             The input data.
         y : FloatTensor
             The output data.
+        spatial_temporal_gnn : SpatialTemporalGNN
+            The Spatial Temporal Graph Neural Network used to get the
+            predictions from a leaf node.
+        scaler : Scaler
+            The scaler used to scale and un-scale the data.
         maximum_leaf_size : int, optional
             The maximum number of events allowed in a leaf node, by
             default 20.
         exploration_weight : int, optional
             The exploration weight used in the Upper Confidence Bound
             for Trees (UCT) formula, by default 1.
+        remove_value : float, optional
+            The value used to substitute the speed features of the
+            input events not present in the description of the node,
+            by default 0.
         """
-        # Set dictionary of total reward of each node.
-        self.C = defaultdict(int)
-        # Set dictionary of total visit count for each node.
-        self.N = defaultdict(int)
-        # Set dictionary of children of each node.
-        self.children = dict()
-        # Set dictionary of expanded children of each node.
-        self.expanded_children = dict()
-        # Set the best found leaf node along with its error.
-        self.best_leaf = ( None, - math.inf )
-        # Set the exploration weight.
-        self.exploration_weight = exploration_weight
+        # Set the inputs.
+        self.x = x.clone()
+        # Set the outputs.
+        self.y = y.clone()
         # Set the Spatial Temporal Graph Neural Network.
         self.spatial_temporal_gnn = spatial_temporal_gnn
         # Set the scaler.
         self.scaler = scaler
         # Set the maximum leaf size.
         self.maximum_leaf_size = maximum_leaf_size
-        # Set the inputs.
-        self.x = x.clone()
-        # Set the outputs.
-        self.y = y.clone()
+        # Set the exploration weight.
+        self.exploration_weight = exploration_weight
+        # Set the remove value.
+        self.remove_value = remove_value
+        # Set the MAE criterion.
+        self.mae_criterion = MAE()
+
+        # Set dictionary of total reward of each node.
+        self.C = defaultdict(int)
+        # Set dictionary of total visit count for each node.
+        self.N = defaultdict(int)
+        # Set dictionary of possible branching actions of each node.
+        self.branching_actions = dict()
+        # Set dictionary of expanded children of each node.
+        self.expanded_children = dict()
+        # Set the best found leaf node along with its error.
+        self.best_leaf = ( None, - math.inf, math.inf )
 
     def rollout(self, node: Node) -> None:
         """
@@ -270,8 +280,8 @@ class MonteCarloTreeSearch:
             The root node of the tree search.
         """
         # Get the path from the root node to the leaf node.
-        # Apply node expansion through the navigator and node selection
-        # through the Upper Confidence Bound applied to Trees (UCT).
+        # Apply random node expansion, and then node selection through
+        # the Upper Confidence Bound applied to Trees (UCT) formula.
         path = self._select(node)
         # Get the leaf node.
         leaf = path[-1]
@@ -279,7 +289,17 @@ class MonteCarloTreeSearch:
         reward = self._simulate(leaf)
         # Backpropogate the reward from the leaf node to the root node.
         self._backpropagate(path, reward)
-        #print(path)
+
+    def get_best_input_events_subset(self) -> List[Tuple[int, int]]:
+        """
+        Get the best subset of input events found by the MCTS.
+
+        Returns
+        -------
+        list of (int, int)
+            The best subset of input events found by the MCTS.
+        """
+        return self.best_leaf[0].input_events
 
     def _select(self, node: Node) -> List[Node]:
         """
@@ -321,29 +341,30 @@ class MonteCarloTreeSearch:
         node : Node
             The node to expand.
         """
-        if node not in self.children.keys():
+        if node not in self.branching_actions.keys():
+            # The node has never been visited yet.
             if node not in self.expanded_children.keys():
-                # The node has never been expanded yet.
-                self.children[node] = [ e for e in node.input_events ]
+                # Initialize the children of the node with all possible
+                # branches (all possible input events).
+                self.branching_actions[node] = deepcopy(node.input_events)
+                # Initialize the expanded children of the node with an
+                # empty list (no children have been expanded).
                 self.expanded_children[node] = []
+            # The node has been fully expanded.
             else:
-                # The node has been fully expanded.
                 return
-        # Get the node input events.
-        input_events = [ e for e in node.input_events ]
-        # Remove the first child from the children of the node.
-        if len(self.children[node]):
-            # Choose with increasing probability over the length of the
-            # children list the child to remove, the probability should sum up to 1.
-            #probs = np.linspace(0, 1., len(self.children[node]))[::-1]
-            # Get the index of the child to remove.
-            index = np.random.choice(len(self.children[node]))#, p=probs)
-            #index=0
-            input_events.remove(self.children[node][index])
-            # Delete the expanded child from the children of the node.
-            del self.children[node][index]
-        # Expand the node in accordance to the removed child.
-        self.expanded_children[node].append(Node(input_events))
+        # Set the children input events.
+        children_events = deepcopy(node.input_events)
+        if len(self.branching_actions[node]):
+            # Get a random index of the branch to expand (event to remove).
+            index = np.random.choice(len(self.branching_actions[node]))
+            # Remove the selected event from the events of the children.
+            children_events.remove(self.branching_actions[node][index])
+            # Delete the expanded branch from the branches of the node.
+            del self.branching_actions[node][index]
+        # Expand the node in accordance to the removed branch, by
+        # removing the event corresponding to the branch.
+        self.expanded_children[node].append(Node(children_events))
 
     def _simulate(self, node: Node) -> float:
         """
@@ -362,16 +383,22 @@ class MonteCarloTreeSearch:
         float
             The reward of the leaf node.
         """
-        reward = node.reward(
-            self.spatial_temporal_gnn, self.x, self.y, self.scaler)
+        reward, mae = node.reward(
+            self.x,
+            self.y,
+            self.spatial_temporal_gnn,
+            self.scaler,
+            self.mae_criterion,
+            remove_value=self.remove_value)
 
         if reward > self.best_leaf[1]:
-            self.best_leaf = (node, reward)
+            self.best_leaf = (node, reward, mae)
 
         return reward
 
     def _backpropagate(self, path: List[Node], reward: float) -> None:
-        """Backpropagate the reward from the node to its ancestors.
+        """
+        Backpropagate the reward from the node to its ancestors.
 
         Parameters
         ----------
@@ -380,13 +407,11 @@ class MonteCarloTreeSearch:
         reward : float
             The reward score of the leaf node to backpropagate.
         """
-        # The reward is normalized by dividing it by 100.
-        reward /= 100.
         for node in reversed(path):
             # Update the total visit count of the node.
             self.N[node] += 1
             # Update the total reward of the node.
-            self.C[node] = max(self.C[node], reward)
+            self.C[node] += reward
             # Update the reward.
             reward += 1
 
@@ -424,8 +449,8 @@ class MonteCarloTreeSearch:
                 The UCT of the child node.
             """
             if self.N[n] == 0:
-                return float("inf")
-            return self.C[n] / (self.N[n]) + self.exploration_weight *\
+                return float('inf')
+            return self.C[n] / (self.N[n]) + self.exploration_weight / self.best_leaf[1] *\
                 math.sqrt(N_sum) / (self.N[n])
 
         return max(self.expanded_children[node], key=get_upper_confidence_bound)
