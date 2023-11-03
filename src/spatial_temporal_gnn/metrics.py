@@ -2,11 +2,11 @@
 Module implementing the error metrics for the training and
 validation procedures.
 """
+import math
 import torch
 from torch import nn
 
-def _get_mask(y_true: torch.FloatTensor,
-              missing_value: float = 0.) -> torch.FloatTensor:
+def _get_mask(y_true: torch.FloatTensor, missing_value: float = 0.) -> torch.FloatTensor:
     """
     Returns a binary mask indicating the positions where the target values
     are not missing.
@@ -24,7 +24,10 @@ def _get_mask(y_true: torch.FloatTensor,
         Binary tensor with the same shape as `y_true`
         indicating which values are not missing.
     """
-    mask = (y_true != missing_value)
+    if math.isnan(missing_value):
+        mask = ~torch.isnan(y_true)
+    else:
+        mask = (y_true != missing_value)
     return mask
 
 def _get_masked_predictions(y_pred: torch.FloatTensor,
@@ -64,10 +67,12 @@ class MAE(nn.Module):
     forward(y_pred: FloatTensor, y_true: FloatTensor) -> FloatTensor:
         Compute the forward pass of the function.
     """
-    def __init__(self) -> None:
+    def __init__(self, missing_value = 0., apply_average: bool = True) -> None:
         """Initialize the Mean Absolute Error instance."""
         super().__init__()
         self.mae = nn.L1Loss(reduction='none')
+        self.apply_average = apply_average
+        self.missing_value = missing_value
 
     def forward(self, y_pred: torch.FloatTensor,
                 y_true: torch.FloatTensor) -> torch.FloatTensor:
@@ -89,10 +94,17 @@ class MAE(nn.Module):
             predicted and true values, not considering the missing
             values.
         """
-        mask = _get_mask(y_true)
+        mask = _get_mask(y_true, self.missing_value)
         y_pred = _get_masked_predictions(y_pred, mask)
+        if math.isnan(self.missing_value):
+            y_true[torch.isnan(y_true)] = 0.
         res = self.mae(y_pred, y_true)
-        return res.sum() / mask.sum()
+
+        if self.apply_average:
+            return res.sum() / mask.sum()
+        else:
+            reduction_dims = list(range(1, len(res.shape)))
+            return res.sum(dim=reduction_dims) / mask.sum(dim=reduction_dims)
 
 class RMSE(nn.Module):
     """
@@ -110,10 +122,11 @@ class RMSE(nn.Module):
     forward(y_pred: FloatTensor, y_true: FloatTensor) -> FloatTensor:
         Compute the forward pass of the function.
     """
-    def __init__(self) -> None:
+    def __init__(self, missing_value = 0.) -> None:
         """Initialize the Root Mean Square Error instance."""
         super().__init__()
         self.mse = nn.MSELoss(reduction='none')
+        self.missing_value = missing_value
 
     def forward(self, y_pred: torch.FloatTensor,
                 y_true: torch.FloatTensor) -> torch.FloatTensor:
@@ -135,8 +148,10 @@ class RMSE(nn.Module):
             predicted and true values, not considering the missing
             values.
         """
-        mask = _get_mask(y_true)
+        mask = _get_mask(y_true, self.missing_value)
         y_pred = _get_masked_predictions(y_pred, mask)
+        if math.isnan(self.missing_value):
+            y_true[torch.isnan(y_true)] = 0.
         res = self.mse(y_pred,y_true)
         return torch.sqrt(res.sum() / mask.sum())
 
@@ -156,11 +171,13 @@ class MAPE(nn.Module):
     forward(y_pred: FloatTensor, y_true: FloatTensor) -> FloatTensor:
         Compute the forward pass of the function.
     """
-    def __init__(self) -> None:
+    def __init__(self, apply_masking: bool = True, missing_value=0.) -> None:
         """Initialize the Mean Absolute Percentage Error instance."""
         super().__init__()
         self.mae = nn.L1Loss(reduction='none')
-
+        self.apply_masking = apply_masking
+        self.missing_value = missing_value
+ 
     def forward(self, y_pred, y_true):
         """
         Compute the Mean Absolute Percentage Error (MAPE) 
@@ -181,8 +198,10 @@ class MAPE(nn.Module):
             between predicted and true values, not considering the
             missing values.
         """
-        mask = _get_mask(y_true)
+        mask = _get_mask(y_true, self.missing_value)
         y_pred = _get_masked_predictions(y_pred, mask)
+        if math.isnan(self.missing_value):
+            y_true[torch.isnan(y_true)] = 0.
         res = self.mae(y_pred, y_true)
         res = res / y_true.abs()
         res[torch.isinf(res)] = 0.
