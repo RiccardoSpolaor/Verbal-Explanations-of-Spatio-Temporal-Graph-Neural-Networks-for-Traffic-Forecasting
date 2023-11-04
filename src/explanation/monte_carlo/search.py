@@ -1,19 +1,22 @@
+"""
+Module containing the Monte Carlo Tree Search algorithm used to find the
+best input events subset that explains the selected target events in the
+output spatial-temporal graph.
+"""
 import gc
 import math
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import torch
 import numpy as np
 
 from .monte_carlo_tree import MonteCarloTreeSearch, Node
-from ..events import remove_features_by_events
 from ...spatial_temporal_gnn.model import SpatialTemporalGNN
 from ...data.data_processing import Scaler
 from ...explanation.events import get_largest_event_set
-from ...explanation.navigator.model import Navigator
 
 
-def get_best_input_events_subset(
+def get_best_input_events_subset_by_mcts(
     x: np.ndarray,
     y: np.ndarray,
     distance_matrix: np.ndarray,
@@ -26,16 +29,136 @@ def get_best_input_events_subset(
     remove_value: float = 0.,
     verbose: bool = False
     ) -> List[Tuple[int, int]]:
+    """
+    Get the best input events subset that explains the selected target
+    events in the output spatial-temporal graph.
+
+    Parameters
+    ----------
+    x : ndarray
+        The input spatial-temporal graph.
+    y : ndarray
+        The output spatial-temporal graph.
+    distance_matrix : ndarray
+        The matrix containing the harvesine distance between each pair of
+        nodes in miles.
+    spatial_temporal_gnn : SpatialTemporalGNN
+        The spatial-temporal graph neural network model used to predict the
+        output spatial-temporal graph from the input spatial-temporal graph.
+    scaler : Scaler
+        The scaler used to scale the input and output spatial-temporal
+        graphs.
+    n_rollouts : int
+        The number of rollouts to perform in the Monte Carlo Tree Search.
+    explanation_size : int
+        The explanation size, i.e. the maximum number of input events to
+        be selected as an explanation of the target events.
+    n_top_events : int
+        The number of best input events with the best spatial-temporal plus
+        speed correlation score with respect to the target events to be
+        considered in the Monte Carlo Tree Search.
+    exploration_weight : float
+        The exploration weight used in the Monte Carlo Tree Search.
+    remove_value : float, optional
+        The value used to replace the features of the input spatial-temporal
+        graph that are not related to the selected input events, by default 0.
+    verbose : bool, optional
+        Whether to print the execution information, by default False.
+
+    Returns
+    -------
+    list of (int, int)
+        The best input events subset that explains the selected target
+        events in the output spatial-temporal graph.
+    """
     # Copy the data in order to not modify the original.
     x = x.copy()
     y = y.copy()
-    
+
     # Get the largest event set from the input data.
     input_events = get_largest_event_set(x)
 
     # Get the largest event set from the target data.
     target_events = get_largest_event_set(y)
 
+    # Get the input events with their average spatio-temporal plus speed
+    # correlation score with respect to the target events.
+    input_events_with_scores = _get_input_events_with_score(
+        x,
+        y,
+        input_events,
+        target_events,
+        distance_matrix)
+
+    # Get the `top_n_input_events` input events.
+    selected_input_events = [
+        e for e, _ in input_events_with_scores[-n_top_events:] ]
+
+    # Initialize the Monte Carlo Tree Search.
+    mcts = MonteCarloTreeSearch(
+        torch.FloatTensor(x),
+        torch.FloatTensor(y),
+        spatial_temporal_gnn,
+        scaler,
+        maximum_leaf_size=explanation_size,
+        exploration_weight=exploration_weight,
+        remove_value=remove_value)
+
+    # Initialize the root node as the selected input events.
+    root = Node(
+        input_events=selected_input_events)
+
+    # Loop over the number of rollouts.
+    for i in range(n_rollouts):
+        if verbose:
+            print(f'Execution {i+1}/{n_rollouts}')
+        # Perform a rollout from the root node.
+        mcts.rollout(root)
+        if verbose:
+            print('reward:', mcts.best_leaf[1], ', mae:', mcts.best_leaf[2])
+        if mcts.best_leaf[1] == float('inf'):
+            break
+        # Perform garbage collection.
+        gc.collect()
+
+    # Get the best input events subset.
+    best_input_events_subset = mcts.get_best_input_events_subset()
+    # Perform garbage collection.
+    gc.collect()
+
+    return best_input_events_subset
+
+def _get_input_events_with_score(
+    x: np.ndarray,
+    y: np.ndarray,
+    input_events: List[Tuple[int, int]],
+    target_events: List[Tuple[int, int]],
+    distance_matrix: np.ndarray
+    ) -> List[Tuple[Tuple[int, int], float]]:
+    """
+    Get the input events with their average spatio-temporal plus speed
+    correlation score with respect to the target events.
+
+    Parameters
+    ----------
+    x : ndarray
+        The input spatial-temporal graph.
+    y : ndarray
+        The output spatial-temporal graph.
+    input_events : list of (int, int)
+        The input events to be scored.
+    target_events : list of (int, int)
+        The target events with respect to which the input events are scored.
+    distance_matrix : ndarray
+        The matrix containing the harvesine distance between each pair of
+        nodes in miles.
+
+    Returns
+    -------
+    list of ( (int, int), float )
+        The list of input events with their average spatio-temporal plus
+        speed correlation score with respect to the target events.
+    """
     # Set a list of input events with their average spatio-temporal plus
     # speed correlation score with respect to the target events.
     input_events_with_scores = []
@@ -81,95 +204,7 @@ def get_best_input_events_subset(
     # Sort the input events with respect to their score.
     input_events_with_scores = sorted(
         input_events_with_scores, key=lambda ev: ev[1])
-
-    # Get the `top_n_input_events` input events.
-    selected_input_events = [
-        e for e, _ in input_events_with_scores[-n_top_events:] ]
-
-    # Initialize the Monte Carlo Tree Search.
-    mcts = MonteCarloTreeSearch(
-        torch.FloatTensor(x),
-        torch.FloatTensor(y),
-        spatial_temporal_gnn,
-        scaler,
-        maximum_leaf_size=explanation_size,
-        exploration_weight=exploration_weight,
-        remove_value=remove_value)
-
-    # Initialize the root node as the selected input events.
-    root = Node(
-        input_events=selected_input_events)
-
-    # Loop over the number of rollouts.
-    for i in range(n_rollouts):
-        if verbose:
-            print(f'Execution {i+1}/{n_rollouts}')
-        # Perform a rollout from the root node.
-        mcts.rollout(root)
-        if verbose:
-            print('reward:', mcts.best_leaf[1], ', mae:', mcts.best_leaf[2])
-        if mcts.best_leaf[1] == float('inf'):
-            break
-        # Perform garbage collection.
-        gc.collect()
-
-    # Get the best input events subset.
-    best_input_events_subset = mcts.get_best_input_events_subset()
-    # Perform garbage collection.
-    gc.collect()
-    
-    return best_input_events_subset
-
-def get_explanations_from_data(
-    x: np.ndarray,
-    y: np.ndarray,
-    adj_matrix: np.ndarray,
-    spatial_temporal_gnn: SpatialTemporalGNN,
-    navigator: Navigator,
-    distance_matrix: np.ndarray,
-    scaler: Scaler,
-    n_rollouts: int = 20,
-    explanation_size: Optional[int] = None,
-    exploration_weight: int = 500,
-    top_n_input_events: Optional[int] = None
-    ) -> Tuple[np.ndarray, np.ndarray]:
-
-    explained_x, explained_y = [], []
-
-    for x_, y_ in zip(x, y):
-        if explanation_size is None:
-            explanation_size_ = int((y_.flatten() != 0).sum() * 1.5)
-        else:
-            explanation_size_ = explanation_size
-        if top_n_input_events is None:
-            top_n_input_events_ = explanation_size_ * 2
-        else:
-            top_n_input_events_ = top_n_input_events
-        subset = get_best_input_events_subset(
-            x_,
-            y_,
-            distance_matrix,
-            spatial_temporal_gnn,
-            scaler,
-            n_rollouts=n_rollouts,
-            explanation_size=explanation_size_,
-            n_top_events=top_n_input_events_,
-            exploration_weight=exploration_weight)
-
-        # TODO: Fix this to add other events.
-        input_events_subset = [ ( 0, e[0], e[1] ) for e in subset[0].input_events ]
-
-        x_ = remove_features_by_events(x_, input_events_subset)
-
-        x_ = x_[..., :1]
-
-        explained_x.append(x_)
-        explained_y.append(y_)
-
-    return np.array(explained_x), np.array(explained_y)
-
-# MPH_TO_KMH_FACTOR = 1.609344
-#CONGESTION_SPEED = 60 # mph #/ MPH_TO_KMH_FACTOR
+    return input_events_with_scores
 
 def _get_input_event_score(
     x: np.ndarray,
@@ -197,10 +232,12 @@ def _get_input_event_score(
         The id of the source node.
     target_id : int
         The id of the target node.
-    distance_matrix : np.ndarray
-        _description_
+    distance_matrix : ndarray
+        The matrix containing the harvesine distance between each pair of
+        nodes in miles.
     target_node_average_speed : float
-        _description_
+        The average speed of the target node among the timesteps at which
+        it is active.
 
     Returns
     -------
@@ -211,7 +248,7 @@ def _get_input_event_score(
     n_x_timesteps = x.shape[0]
     # Get the speed of the source node.
     source_node_speed = x[source_timestep, source_id, 0]
-    
+
     # If the average speed of the target node is zero,
     # then return a zero score.
     if target_node_average_speed == 0:
@@ -219,7 +256,7 @@ def _get_input_event_score(
 
     # Get the time difference between the source and target nodes in hours,
     # Knowing that each timestep is 5 minutes.
-    delta_time = (target_last_timestep + n_x_timesteps - source_timestep) 
+    delta_time = target_last_timestep + n_x_timesteps - source_timestep
     delta_time *= 5 / 60
 
     # Get the distance between the source and target nodes in miles.
@@ -228,28 +265,9 @@ def _get_input_event_score(
     # the target node average speed in miles/hour.
     delta_speed = abs(target_node_average_speed - source_node_speed)
     # Get the spatio-temporal correlation score.
-    score = (delta_time / (delta_distance + 1e-8))
-    # Add the speed correlation score to the spatio-temporal correlation score.
-    score += (1 / delta_speed + 1e-8) * math.exp(-(delta_time + delta_distance))
+    score = delta_time / (delta_distance + 1e-8)
+    # Add the speed correlation score to the spatio-temporal correlation
+    # score.
+    score += (1 / delta_speed + 1e-8) * math.exp(
+        -(delta_time + delta_distance))
     return score
-    '''#return  C + (1 - abs(speed_source - CONGESTION_SPEED) / CONGESTION_SPEED) * (1 - abs(speed_target - CONGESTION_SPEED) / CONGESTION_SPEED)
-    if speed_target >= CONGESTION_SPEED:
-        return  C + math.log( source_node_speed + 1, CONGESTION_SPEED + 1 ) * math.exp(-(delta_time + delta_distance)) #math.log(speed_target.item(), CONGESTION_SPEED)
-    else:
-        return C + (1 / math.log( source_node_speed + 1, CONGESTION_SPEED + 1 )) * math.exp(-(delta_time + delta_distance)) #math.log(speed_target.item(), CONGESTION_SPEED)
-    # If I don't have a target congestion
-    # - I want to deprioritize nodes that are expected to lead to congestion (C > 1)
-    # - I want to prioritize nodes that are expected to lead to no congestion (C < 1)
-    # - I want to prioritize lower speeds, since it is easier to create a free flow of traffic if the traffic is flowing slower.
-    if speed_target.item() >= CONGESTION_SPEED:
-        return  C * (CONGESTION_SPEED / speed_target.item() )#math.log(speed_target.item(), CONGESTION_SPEED)
-    # If I have a target congestion
-    # - I want to deprioritize nodes that are expected to lead to no congestion (C < 1)
-    # - I want to prioritize nodes that are expected to lead to congestion (C > 1)
-    # - I want to prioritize higher speeds, since it is easier to get to congestion if the traffic is flowing faster.
-    else:
-        return C * (speed_target.item() / CONGESTION_SPEED)#math.log(speed_target.item(), CONGESTION_SPEED)
-
-    #return (math.log(speed_target.item(), CONGESTION_SPEED) - 1) * (speed_source * delta_time / (delta_distance + 1e-1) - 1)
-
-    #return (math.log(speed_target, CONGESTION_SPEED) - 1) * (speed_source * delta_time / (delta_distance + 1e-1) - 1)'''

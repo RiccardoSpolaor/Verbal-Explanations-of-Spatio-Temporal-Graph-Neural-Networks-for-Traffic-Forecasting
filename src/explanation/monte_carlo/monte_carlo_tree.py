@@ -1,5 +1,6 @@
 """
-Module containing the Monte Carlo Tree Search (MCTS) algorithm.
+Module containing the Monte Carlo Tree Search (MCTS) class
+and its Node class.
 """
 import math
 from copy import deepcopy
@@ -95,41 +96,42 @@ class Node():
             The reciprocal MAE between the predicted output data and the
             actual output data.
         """
-        # Clone the input data to avoid modifying it.
-        x = x.clone()
-        # Get the device of the spatial temporal GNN.
-        device = spatial_temporal_gnn.device
+        with torch.no_grad():
+            # Clone the input data to avoid modifying it.
+            x = x.clone()
+            # Get the device of the spatial temporal GNN.
+            device = spatial_temporal_gnn.device
 
-        # Get the subset of the input data corresponding to the input
-        # events of the node.
-        x_subset = remove_features_by_events(
-            x,
-            self.input_events,
-            remove_value=remove_value)
-        # Scale the input data.
-        x_subset = scaler.scale(x_subset)
-        # Add the batch dimension to the subset.
-        x_subset = x_subset.unsqueeze(0)
-        # Move the subset to the device.
-        x_subset = x_subset.to(device)
+            # Get the subset of the input data corresponding to the input
+            # events of the node.
+            x_subset = remove_features_by_events(
+                x,
+                self.input_events,
+                remove_value=remove_value)
+            # Scale the input data.
+            x_subset = scaler.scale(x_subset)
+            # Add the batch dimension to the subset.
+            x_subset = x_subset.unsqueeze(0)
+            # Move the subset to the device.
+            x_subset = x_subset.to(device)
 
-        # Add the batch dimension to the output data.
-        y = y.unsqueeze(0).to(device)
+            # Add the batch dimension to the output data.
+            y = y.unsqueeze(0).to(device)
 
-        # Predict the output graph given the subset of the input data.
-        y_pred = spatial_temporal_gnn(x_subset)
+            # Predict the output graph given the subset of the input data.
+            y_pred = spatial_temporal_gnn(x_subset)
 
-        # Scale the prediction.
-        y_pred = scaler.un_scale(y_pred)
-        # Remove the non-considered target features in the prediction.
-        y_pred[y == 0] = 0
+            # Scale the prediction.
+            y_pred = scaler.un_scale(y_pred)
+            # Remove the non-considered target features in the prediction.
+            y_pred[y == 0] = 0
 
-        # Compute the reward as the reciprocal MAE between the predicted
-        # output events and the actual output events.
-        mae = mae_criterion(y_pred, y).item()
-        if mae == 0.:
-            return float('inf'), mae
-        return 1. / mae, mae
+            # Compute the reward as the reciprocal MAE between the predicted
+            # output events and the actual output events.
+            mae = mae_criterion(y_pred, y).item()
+            if mae == 0.:
+                return float('inf'), mae
+            return 1. / mae, mae
 
     def __hash__(self) -> int:
         """Hash the node by the input events that describe it.
