@@ -1,11 +1,15 @@
-from typing import Dict
+from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 
 
 def get_node_values_with_clusters_and_location_dataframe(
-    node_values: np.ndarray, clusters: np.ndarray,
-    node_pos_dict: Dict[int, str], locations_df: pd.DataFrame) -> pd.DataFrame:
+    node_values: np.ndarray,
+    clusters: np.ndarray,
+    node_pos_dict: Dict[int, str],
+    locations_df: pd.DataFrame,
+    time_values: Optional[np.ndarray] = None
+    ) -> pd.DataFrame:
     """
     Get a pandas dataframe from a numpy array of node speed values a numpy
     array of node clusters and a pandas dataframe of node locations.
@@ -26,6 +30,8 @@ def get_node_values_with_clusters_and_location_dataframe(
         corresponding node ID.
     locations_df : DataFrame
         The dataframe containing the location of each node.
+    time_values : ndarray, optional
+        The numpy array containing the timestamps of the speed values.
 
     Returns
     -------
@@ -40,6 +46,11 @@ def get_node_values_with_clusters_and_location_dataframe(
 
     for time_idx, node_matrix in enumerate(node_values):
         for node_idx, (speed, cluster) in enumerate(node_matrix):
+            if time_values is not None:
+                # Get the timestamp from the time values array.
+                datetime = time_values[time_idx, node_idx]
+            else:
+                datetime = time_idx
             # Get the node ID from the node position dictionary.
             node_id = node_pos_dict[node_idx]
             # Get the latitude and longitude of the node.
@@ -50,7 +61,7 @@ def get_node_values_with_clusters_and_location_dataframe(
 
             # Update the nodes information list.
             nodes_information.append(
-                [node_id, latitude, longitude, cluster, speed, time_idx])
+                [node_id, latitude, longitude, cluster, speed, datetime])
 
     # Build the dataframe from the nodes information list.
     df = pd.DataFrame({
@@ -63,6 +74,9 @@ def get_node_values_with_clusters_and_location_dataframe(
     })
 
     # Set the cluster column as integer.
-    df['cluster'] = df['cluster'].astype(int)
+    try:
+        df['cluster'] = df['cluster'].astype(int)
+    except ValueError:
+        pass
 
     return df

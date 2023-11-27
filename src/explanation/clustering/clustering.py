@@ -1,10 +1,15 @@
 from typing import Tuple
+import warnings
 
-from sklearn.cluster import DBSCAN
 from scipy.spatial.distance import cdist
+from sklearn.cluster import DBSCAN
+from sklearn_extra.cluster import KMedoids
 import numpy as np
 
-from ...utils.config import MPH_TO_KMH_FACTOR
+from ...utils.config import (
+    MPH_TO_KMH_FACTOR,
+    CONGESTION_THRESHOLD_MPH,
+    SEVERE_CONGESTION_THRESHOLD_MPH)
 
 
 def get_adjacency_distance_matrix(
@@ -74,8 +79,6 @@ def get_temporal_distance_matrix(n_nodes: int, n_timesteps: int) -> np.ndarray:
                                  'euclidean')
     return time_distance_matrix
 
-from sklearn.cluster import DBSCAN
-
 def get_clusters(
     instance: np.ndarray, adj_distance_matrix: np.ndarray,
     temporal_distance_matrix: np.ndarray, eps: float,
@@ -132,10 +135,9 @@ def get_clusters(
     # Set the distance between nodes that are not connected to an
     # unreachable value.
     distance_matrix[adj_distance_matrix == 1] = 1_000
-    
+
     # Set the distance between nodes that are not present in the instance
     # to an unreachable value.
-    print(reshaped_instance.shape)
     if remove_zeros:
         for i in range(n_timesteps):
             for j in range(n_nodes):
@@ -153,7 +155,7 @@ def get_clusters(
 
     # Reshape the clusters array to have the same shape as the instance.
     clusters = clusters.reshape(n_timesteps, n_nodes, 1)
-    
+
     # Set the ID of the new cluster.
     new_cluster = -2
 
@@ -162,6 +164,94 @@ def get_clusters(
         clusters[(instance != 0) & (clusters == -1)] = new_cluster
 
     return clusters
+
+def get_explanation_clusters(
+    x: np.ndarray,
+    adj_distance_matrix: np.ndarray,
+    temporal_distance_matrix: np.ndarray,
+    speed_distance_weight: float = 3,
+    n_clusters: int = 4,
+    ) -> np.ndarray:
+    """
+    Get the clusters of the given explanation instance using the
+    k-medoids algorithm.
+
+    Parameters
+    ----------
+    instance : ndarray
+        The spatial-temporal graph instance to cluster.
+    adj_distance_matrix : ndarray
+        The adjacency matrix of the nodes in the graph measured in distance
+        between 0 and 1.
+    temporal_distance_matrix : ndarray
+        The matrix measuring the distance between the time steps
+        of the nodes in the graph between 0 and 1.
+    speed_distance_weight : float, optional
+        The weight of the speed distance in the clustering process,
+        by default 3.
+    n_clusters : int, optional
+        The number of clusters to find, by default 4.
+
+    Returns
+    -------
+    ndarray
+        The clusters of the given instance.
+    """
+    n_timesteps, n_nodes, _ = x.shape
+
+    # Reshape the instance to be a column vector.
+    reshaped_instance = x.reshape(-2, 1)
+
+    # Compute the distance matrix between the speed of the nodes in the graph.
+    speed_distance_matrix = cdist(
+        reshaped_instance,
+        reshaped_instance,
+        'euclidean')
+    # Normalize the distance matrix between 0 and 1.
+    speed_distance_matrix /= np.max(speed_distance_matrix)
+
+    # Compute the weighted distance matrix between the nodes in the graph
+    # in terms of speed and the spatial and temporal distances.
+    distance_matrix = speed_distance_matrix * speed_distance_weight +\
+        adj_distance_matrix + temporal_distance_matrix
+
+    # Set the distance between nodes that are not connected to an
+    # unreachable value.
+    distance_matrix[adj_distance_matrix == 1] = 1_000
+
+    # Get the non-zero indices of the reshaped instance.
+    non_zeros = np.where(reshaped_instance != 0)[0]
+    # Reduce distance matrix by solely considering the nodes that are
+    # present in the instance.
+    distance_matrix = distance_matrix[non_zeros, :][:, non_zeros]
+
+    # Compute the clusters of the given instance using the k-medoids
+    # algorithm.
+    kmedoid = KMedoids(
+        metric='precomputed',
+        n_clusters=n_clusters,
+        max_iter=100_000,
+        init='k-medoids++')
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        clusters = kmedoid.fit_predict(distance_matrix)
+
+    # Add a dummy dimension to the clusters array.
+    clusters = np.expand_dims(clusters, axis=1)
+
+    # Create a cluster vector with dummy -1 values.
+    clusters_vector = np.full_like(reshaped_instance, -1)
+    # Set the non-zero values of the cluster vector to the clusters
+    clusters_vector[non_zeros] = clusters[:]
+
+    # Reshape the clusters array to have the same shape as the instance.
+    clusters_vector = clusters_vector.reshape(n_timesteps, n_nodes, 1)
+
+    # Set the cluster IDs as integers.
+    clusters_vector = clusters_vector.astype(int)
+
+    return clusters_vector
 
 def get_dataset_for_explainability(
     x: np.ndarray,
@@ -172,10 +262,13 @@ def get_dataset_for_explainability(
     min_samples: int,
     adj_distance_matrix: np.ndarray,
     temporal_distance_matrix: np.ndarray,
-    congestion_max_speed: float = 60,
-    free_flow_min_speed: float = 110,
+    congestion_threshold_mph: float = CONGESTION_THRESHOLD_MPH,
+    severe_congestion_threshold_mph: float = SEVERE_CONGESTION_THRESHOLD_MPH,
     is_x_kmph: bool = False,
-    is_y_kmph: bool = True
+    is_y_kmph: bool = True,
+    total_samples: int = 1_000,
+    min_clusters_size: int = 12,
+    max_clusters_size: int = 72
     ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Build a dataset which target predictions are meaningful for
@@ -228,9 +321,15 @@ def get_dataset_for_explainability(
     ndarray
         The respective target dataset for explainability.
     """
+    # Set the congestion and free-flow thresholds in km/h if needed.
+    if is_y_kmph:
+        congestion_threshold = congestion_threshold_mph * MPH_TO_KMH_FACTOR
+        severe_congestion_threshold = severe_congestion_threshold_mph *\
+            MPH_TO_KMH_FACTOR
+
     # Initialize the resulting datasets.
-    x_for_explainability, y_for_explainability = [], []
-    x_time_for_explainability, y_time_for_explainability = [], []
+    x_for_explainability, y_for_explainability = [[], [], []], [[], [], []]
+    x_time_for_explainability, y_time_for_explainability = [[], [], []], [[], [], []]
 
     # Iterate through the dataset instances.
     for x_, y_, x_t, y_t in zip(x, y, x_time, y_time):
@@ -246,22 +345,44 @@ def get_dataset_for_explainability(
             # Mask the target values according to the cluster.
             masked_y_ = y_ * (clusters == c)
             # Get the mean of the target values in the cluster.
-            cluster_nodes_mean = masked_y_[masked_y_ > 0]
-            
+            cluster_values = masked_y_[masked_y_ > 0]
+
+            if len(cluster_values) < min_clusters_size or \
+                len(cluster_values) > max_clusters_size:
+                continue
+
             # If the cluster mean is in the range of congestion or free-flow
             # traffic, generate a new instance.
-            if np.all(cluster_nodes_mean <= congestion_max_speed) or \
-                np.all(cluster_nodes_mean >= free_flow_min_speed):
-                x_for_explainability.append(x_)
-                x_time_for_explainability.append(x_t)
-                y_for_explainability.append(masked_y_)
-                y_time_for_explainability.append(y_t)
-    # Turn the resulting datasets into numpy arrays.
-    x_for_explainability = np.array(x_for_explainability)
-    y_for_explainability = np.array(y_for_explainability)
-    x_time_for_explainability = np.array(x_time_for_explainability)
-    y_time_for_explainability = np.array(y_time_for_explainability)
-    
+            if np.all(cluster_values <= severe_congestion_threshold):
+                x_for_explainability[0].append(x_)
+                x_time_for_explainability[0].append(x_t)
+                y_for_explainability[0].append(masked_y_)
+                y_time_for_explainability[0].append(y_t)
+            elif (np.all(cluster_values > severe_congestion_threshold) and np.all(cluster_values <= congestion_threshold)):
+                x_for_explainability[1].append(x_)
+                x_time_for_explainability[1].append(x_t)
+                y_for_explainability[1].append(masked_y_)
+                y_time_for_explainability[1].append(y_t)
+            elif np.all(cluster_values > congestion_threshold):
+                x_for_explainability[2].append(x_)
+                x_time_for_explainability[2].append(x_t)
+                y_for_explainability[2].append(masked_y_)
+                y_time_for_explainability[2].append(y_t)
+    # Get the requested samples from each kind of traffic cluster, using linspaced indices.
+    samples_per_kind = total_samples // 3
+
+    for i in range(3):
+        indices = np.linspace(0, len(x_for_explainability[i]), samples_per_kind, dtype=int, endpoint=False)
+        x_for_explainability[i] = [ x_for_explainability[i][j] for j in indices ]
+        y_for_explainability[i] = [ y_for_explainability[i][j] for j in indices ]
+        x_time_for_explainability[i] = [ x_time_for_explainability[i][j] for j in indices ]
+        y_time_for_explainability[i] = [ y_time_for_explainability[i][j] for j in indices ]
+    # Stack the resulting datasets into numpy arrays.
+    x_for_explainability = np.vstack(x_for_explainability)
+    y_for_explainability = np.vstack(y_for_explainability)
+    x_time_for_explainability = np.vstack(x_time_for_explainability)
+    y_time_for_explainability = np.vstack(y_time_for_explainability)
+
     # Convert the speed values to miles/h if needed.
     if is_x_kmph:
         x_for_explainability = x_for_explainability / MPH_TO_KMH_FACTOR
