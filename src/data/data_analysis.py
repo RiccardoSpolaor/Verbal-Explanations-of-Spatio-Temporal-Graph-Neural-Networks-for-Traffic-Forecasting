@@ -156,6 +156,63 @@ def plot_features_distribution(statistics_df: pd.DataFrame, bins: List[int],
     # Set the main title.
     plt.suptitle(title)
     plt.show()
+    
+def plot_data_distribution(statistics_df: pd.DataFrame, bins: List[int],
+                           x_labels: List[str], title: str) -> None:
+    """
+    Plot the distribution of each column feature from a dataframe
+    collecting the feature information of each observation.
+
+    Parameters
+    ----------
+    statistics_df : DataFrame
+        The input dataframe.
+    bins : list of int
+        The bin size to use to discretize each feature values.
+    x_labels : list of str
+        The label to put in the x axis of the resulting graph of each
+        feature distribution.
+    title : str
+        The title of the plot.
+    """
+    assert len(statistics_df.columns) == len(bins) == len(x_labels), \
+    'The number of `bins` and `x_labels` must match the number of ' +\
+    'dataframe columns.'
+
+    # Set the plot rows and columns number according to the number 
+    # of features in the dataframe. 
+    n_features = len(statistics_df.columns)
+    n_cols = 2
+    n_rows = ceil(n_features / 2)
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 10))
+    # Set the axes indices.
+    axes_indices = [(r, c) for r in range(n_rows) for c in range(n_cols)]
+
+    # Plot the subplots of the distribution of each feature.
+    for c, ax, b, l in zip(statistics_df.columns, axes_indices, bins, x_labels):
+        if l == 'Day of the week':
+            statistics_df[c].plot(ax=axes[ax], kind='hist', edgecolor='black',
+                        bins=b, title=f'Distribution of feature "{c}"',
+                        xticks=range(7))
+            axes[ax].set_xticklabels(['Monday', 'Tuesday', 'Wednesday',
+                                'Thursday', 'Friday', 'Saturday', 'Sunday'])
+        elif l == 'Time of the day':
+            statistics_df[c].plot(ax=axes[ax], kind='hist', edgecolor='black',
+                        bins=b, title=f'Distribution of feature "{c}"')
+            axes[ax].set_xticklabels([f'{int(t):02d}:00' for t in range(-5, 25, 5)])
+        else:  
+            statistics_df[c].plot(ax=axes[ax], kind='hist', edgecolor='black',
+                                  bins=b, title=f'Distribution of feature "{c}"')
+        axes[ax].set_xlabel(l)
+
+    # Delete eventual extra subplots.
+    for ax in axes_indices[len(statistics_df.columns):]:
+        fig.delaxes(axes[ax])
+
+    # Set the main title.
+    plt.suptitle(title)
+    plt.show()
 
 def get_missing_values_by_location_dataframe(
     node_values_df: pd.DataFrame, locations_df: pd.DataFrame) -> pd.DataFrame:

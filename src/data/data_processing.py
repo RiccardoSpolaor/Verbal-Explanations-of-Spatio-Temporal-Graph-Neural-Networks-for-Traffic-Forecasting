@@ -1,6 +1,7 @@
 from typing import get_args, Dict, List, Literal, Tuple
 
 import torch
+import networkx as nx
 import numpy as np
 import pandas as pd
 from geopy.distance import distance as haversine
@@ -150,6 +151,66 @@ def get_node_values_numpy_matrix(
     node_times = np.repeat(node_times, n_nodes, axis=1)
 
     return node_values_np, node_times
+
+def get_node_values_numpy_matrix_for_data_analysis(
+    node_values_df: pd.DataFrame
+    ) -> np.ndarray:
+    """
+    Get a numpy array containing the speed values of the nodes
+    at different timestamps from a specific dataframe.
+    The returning array will have the following shape (T, N, F), where:
+    * T is the number of timesteps.
+    * N is the number of nodes.
+    * F is the number of features.
+    F varies between 1 or more according on how many `time_encodings`
+    elements are provided.
+
+    Parameters
+    ----------
+    node_values_df : DataFrame
+        The dataframe containing the speed values of the nodes at
+        different timestamps.
+    time_aggregations : list of 'time_of_day' | 'day_of_week'
+        The set of methods by which the time features will be
+        aggregated and encoded.
+
+    Returns
+    -------
+    ndarray
+        The array containing the speed values of the nodes and the eventual
+        time encoded information.
+    """
+    # Get the numpy matrix of node values from the pandas dataframe.
+    node_values_np = node_values_df.to_numpy(dtype=object)
+    # Expand the dimension of the dataframe to (T, N, F)
+    node_values_np = np.expand_dims(node_values_df.to_numpy(), axis=-1)
+    
+    _, n_nodes = node_values_df.shape
+
+    time_of_the_day = np.array(
+        [f'{d.hour:02d}:{d.minute:02d}'
+         for d in pd.to_datetime(node_values_df.index.values)])
+    day_of_the_week = np.array([d.day_name() for d in pd.to_datetime(node_values_df.index.values)])
+    
+    # Add a dimension to the time of the day array.
+    time_of_the_day = np.expand_dims(time_of_the_day, axis=-1)
+    # Repeat for each node the time information at a specific timestamp.
+    time_of_the_day = np.repeat(time_of_the_day, n_nodes, axis=1)
+
+    # Insert the time information as a new feature in the node values.
+    node_values_np = np.insert(node_values_np, node_values_np.shape[-1],
+                            values=time_of_the_day, axis=-1)
+    
+    # Add a dimension to the day of the week array.
+    day_of_the_week = np.expand_dims(day_of_the_week, axis=-1)
+    # Repeat for each node the time information at a specific timestamp.
+    day_of_the_week = np.repeat(day_of_the_week, n_nodes, axis=1)
+
+    # Insert the day of the week information as the last 7 features of the last axis
+    node_values_np = np.insert(node_values_np, node_values_np.shape[-1],
+                            values=day_of_the_week, axis=-1)
+
+    return node_values_np
 
 def _add_encoded_time_of_the_day(
     node_values_np: np.ndarray, node_values_df: pd.DataFrame
@@ -385,7 +446,7 @@ def get_dataset_by_sliding_window(
     # Stack the results.
     return np.stack(x), np.stack(y), np.stack(x_time), np.stack(y_time)
 
-def get_distance_matrix(
+'''def get_distance_matrix(
     node_locations_df: pd.DataFrame,
     node_ids_dict: Dict[int, str]
     ) -> np.ndarray:
@@ -411,3 +472,78 @@ def get_distance_matrix(
                 (latitude_j, longitude_j)).miles
 
     return distance_matrix
+
+def get_distance_matrix_1(
+    node_distances_path: str,
+    node_ids_dict: Dict[int, str],
+    has_header: bool
+    ) -> np.ndarray:
+    if has_header:
+        df = pd.read_csv(node_distances_path)
+    else:
+        df = pd.read_csv(node_distances_path, names=['from', 'to', 'cost'])
+    
+    # Build the distance matrix between the nodes.
+    distance_matrix = np.zeros((len(node_ids_dict), len(node_ids_dict)))
+    
+    max_cost = df.cost.max()
+    
+    for id_i, idx_i in node_ids_dict.items():
+        for id_j, idx_j in node_ids_dict.items():
+            # Get the latitude and longitude of the two nodes.
+            cost = df.loc[
+                (df['from'] == int(id_i)) & (df['to'] == int(id_j))
+                ]['cost'].values
+            if not len(cost):
+                cost = max_cost
+            else:
+                cost = cost[0]
+            # Compute the haversine distance between the two nodes in miles
+            # and assign it to the distance matrix.
+            distance_matrix[idx_i, idx_j] = cost
+
+    return distance_matrix'''
+
+def get_distance_matrix(
+    adj_matrix: np.ndarray,
+    node_locations_df: pd.DataFrame,
+    node_pos_dict: Dict[int, str]
+    ) -> np.ndarray:
+    # Get the distance matrix from the adjacency matrix.
+    distance_matrix = 1 - adj_matrix
+    # Set the distance between out-of-range nodes to 1_000.
+    distance_matrix[distance_matrix == 1] = 1_000
+
+    # Build the directed graph from the distance matrix.
+    G = nx.DiGraph(distance_matrix)
+
+    # Set the distance matrix between the nodes to be filled with miles.
+    distance_matrix_in_miles = np.zeros((len(node_pos_dict), len(node_pos_dict)))
+
+    # Loop through each node.
+    for idx_i in node_pos_dict.keys():
+        for idx_j in node_pos_dict.keys():
+            # Get the shortest path between the two nodes.
+            path = nx.dijkstra_path(G, idx_i, idx_j)
+            distance = 0.
+            for i in range(len(path) - 1):
+                id_i = node_pos_dict[path[i]]
+                id_j = node_pos_dict[path[i + 1]]
+                # Get the latitude and longitude of the two nodes.
+                latitude_i = node_locations_df.loc[
+                    node_locations_df['sensor_id'] == id_i].latitude.values[0]
+                longitude_i = node_locations_df.loc[
+                    node_locations_df['sensor_id'] == id_i].longitude.values[0]
+                latitude_j = node_locations_df.loc[
+                    node_locations_df['sensor_id'] == id_j].latitude.values[0]
+                longitude_j = node_locations_df.loc[
+                    node_locations_df['sensor_id'] == id_j].longitude.values[0]
+
+                distance += haversine(
+                    (latitude_i, longitude_i),
+                    (latitude_j, longitude_j)).miles
+            # Compute the haversine distance between the two nodes in miles
+            # and assign it to the distance matrix.
+            distance_matrix_in_miles[idx_i, idx_j] = distance
+
+    return distance_matrix_in_miles

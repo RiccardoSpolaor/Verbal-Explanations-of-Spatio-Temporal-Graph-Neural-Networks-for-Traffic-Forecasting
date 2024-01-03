@@ -48,8 +48,9 @@ class SpatialTemporalGNN(nn.Module):
     """
     def __init__(self, n_in_features: int, n_out_features: int,
                  n_in_timesteps: int, n_out_timesteps: int, A: np.ndarray,
-                 device: str, n_attention_heads: int = 4,
-                 n_hidden_features: int = 64) -> None:
+                 device: str,
+                 n_hidden_features: int = 64,
+                 n_attention_heads: int = 4) -> None:
         """Initialize the Spatial-Temporal Graph Neural Network.
 
         Parameters

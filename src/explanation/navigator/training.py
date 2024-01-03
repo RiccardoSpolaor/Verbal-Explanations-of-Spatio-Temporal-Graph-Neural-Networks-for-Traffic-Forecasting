@@ -13,7 +13,7 @@ from src.explanation.navigator.model import Navigator
 from src.data.data_processing import Scaler
 
 def _simulate_model(
-    instance: torch.FloatTensor, events_scores: torch.FloatTensor
+    instance: torch.FloatTensor, events_scores: torch.FloatTensor, scaler: Scaler
     ) -> torch.FloatTensor:
     # Apply the sigmoid function to the events scores.
     events_scores = events_scores.sigmoid()
@@ -23,11 +23,15 @@ def _simulate_model(
     # Compute the relaxed Bernoulli distribution and apply the sigmoid
     # function to the resulting scores.
     events_scores = torch.sigmoid((eps.log() - (1 - eps).log() + events_scores) / 2.0)
+    #events_scores = torch.sigmoid((eps.log() - (1 - eps).log() + events_scores) / 2.0)
     # TODO: Simulate all events, not just the speed events.
     # Threshold the events scores on 0.5.
     result = events_scores >= .5
     # Mask the instance according to the thresholded event scores.
-    instance = result * instance
+    instance = scaler.scale(instance)
+    # Conserving the gradient put -2.25 where result is False
+    #print(instance.shape, result.shape)
+    instance[..., 0:1][~result] = -2.25
     return instance
 
 def train(
@@ -101,9 +105,9 @@ def train(
             # Move the score mask to the device.
             score_mask = score_mask.to(device=device)
             # Simulate the input instance according to the score mask.
-            x_simulated = _simulate_model(x, score_mask)
+            x_simulated = _simulate_model(x, score_mask, scaler)
             # Scale the simulated instance.
-            x_simulated = scaler.scale(x_simulated)
+            #x_simulated = scaler.scale(x_simulated)
 
             # Compute the Spatial-Temporal GNN model predictions on the
             # simulated instance.
@@ -302,9 +306,9 @@ def validate(
             # Move the score mask to the device.
             score_mask = score_mask.to(device=device)
             # Simulate the input instance according to the score mask.
-            x_simulated = _simulate_model(x, score_mask)
+            x_simulated = _simulate_model(x, score_mask, scaler)
             # Scale the simulated instance.
-            x_simulated = scaler.scale(x_simulated)
+            #x_simulated = scaler.scale(x_simulated)
 
             # Compute the Spatial-Temporal GNN model predictions on the
             # simulated instance.

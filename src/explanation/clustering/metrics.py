@@ -42,8 +42,10 @@ def get_within_clusters_variance(
         numerator_sum += np.var(sub_sample) * len_sub_sample
         # Update the total number of nodes with the length of the sub-sample.
         total_node_number += len_sub_sample
-
-    return numerator_sum / (total_node_number * np.var(x))
+    if ignore_noise:
+        return numerator_sum / (total_node_number * np.var(x[clusters >= 0]))
+    else:
+        return numerator_sum / (total_node_number * np.var(x))
 
 def get_connected_cluster_dissimilarity(
     x: np.ndarray,

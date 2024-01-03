@@ -268,6 +268,6 @@ def _get_input_event_score(
     score = delta_time / (delta_distance + 1e-8)
     # Add the speed correlation score to the spatio-temporal correlation
     # score.
-    score += (1 / delta_speed + 1e-8) * math.exp(
+    score += (1 / (delta_speed + 1e-8)) * math.exp(
         -(delta_time + delta_distance))
     return score

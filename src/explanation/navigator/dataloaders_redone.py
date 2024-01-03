@@ -1,9 +1,13 @@
 from typing import Tuple
 from torch.utils.data.dataloader import DataLoader, Dataset
+import torch
 import numpy as np
 import pandas as pd
 
 from ..events import get_largest_event_set
+from ...data.data_processing import Scaler
+from ...spatial_temporal_gnn.model import SpatialTemporalGNN
+from ...spatial_temporal_gnn.metrics import MAE
 
 
 class EventsDataset(Dataset):
@@ -29,7 +33,9 @@ class EventsDataset(Dataset):
         x: np.ndarray,
         y: np.ndarray,
         y_time: np.ndarray,
-        fix_y: bool = False
+        spatial_temporal_gnn: SpatialTemporalGNN,
+        scaler: Scaler,
+        device: str,
         ) -> None:
         """Initialize the dataset.
 
@@ -48,14 +54,12 @@ class EventsDataset(Dataset):
         self.x = x[np.any(x[..., 0] != 0, axis=(1, 2))]
         self.y = y[np.any(x[..., 0] != 0, axis=(1, 2))]
         self.y_time = y_time[np.any(x[..., 0] != 0, axis=(1, 2))]
-        
-        #if fix_y:
-        #    target_events = [
-        #        self._get_random_target_graph_encoded_event(y_) for y_ in y]
-        #    self.target_events = np.array(target_events)
-        #else:
-        #    self.target_events = None
 
+        self.spatial_temporal_gnn = spatial_temporal_gnn
+        self.ae_criterion = MAE(apply_average=False)
+        self.scaler = scaler
+        self.device = device
+        
         self.len = self.x.shape[0]
 
     def __getitem__(self, index: int) -> Tuple[np.ndarray, np.ndarray]:
@@ -84,45 +88,58 @@ class EventsDataset(Dataset):
         #    else None
         
         # Get the largest event set of the input instance.
-        input_events = np.array(get_largest_event_set(x))
-
-        # Set the instances list.
-        instances = []
-        for event in input_events:
-            # Get the encoded information depending on the event kind.
-            event_kind = event[0]
-            if event_kind == 0:
-                encoded_information = x[event[1], event[2], :]
-                ###
-                instance = [event[1], event[2], *encoded_information]
-                instances.append(instance)
-                #encoded_information[1] = -1
-                #encoded_information[-7:] = 0
-            '''elif event_kind == 1:
-                encoded_information = x[event[1], 0, :]
-                encoded_information[0] = 0
-                encoded_information[-7:] = 0
-            elif event_kind == 2:
-                encoded_information = x[0, 0, :]
-                encoded_information[0] = 0
-                encoded_information[1] = -1
-            # Encode the timestep and node information.
-            timestep = event[1] if event_kind in [0, 1] else -1
-            node = event[2] if event_kind == 0 else -1
-            # Build the encoded instance and append it to the instances list.
-            instance = [event[0], timestep, node, *encoded_information]
-            instances.append(instance)''';
-        instances = np.array(instances)
-
-        #if not target_event:
+        input_events = get_largest_event_set(x)
+        input_events = np.array([i[1:] for i in input_events if i[0] == 0])
+        
+        # Create a list of instances with removed events.
+        xs_with_removed_events = []
+        
         target_event = self._get_random_target_graph_encoded_event(y, y_time)
 
         masked_y = np.zeros_like(y)
         target_timestep, target_node = target_event[0 : 2].astype(int)
-        masked_y[target_timestep, target_node, 0] =\
-            y[target_timestep, target_node, 0]
+        masked_y[target_timestep, target_node, 0] =  y[target_timestep, target_node, 0]
+        
+        for e in input_events:
+            timestep, node = e
+            # Remove the speed event at timestep i and node j.
+            x_with_removed_event = torch.tensor(x).float().to(device=self.device)
+            x_with_removed_event[timestep, node, 0] = 0.
 
-        return x, instances, target_event, masked_y
+            xs_with_removed_events.append(x_with_removed_event)
+
+        with torch.no_grad():
+            simulated_instances_loader = DataLoader(
+                xs_with_removed_events,
+                batch_size=64,
+                shuffle=False)
+
+            simulated_instances_scores = []
+            for simulated_batch in simulated_instances_loader:
+                simulated_batch = self.scaler.scale(simulated_batch)
+                simulated_batch = simulated_batch.float().to(device=self.device)
+                y_pred = self.spatial_temporal_gnn(simulated_batch)
+                y_pred = self.scaler.un_scale(y_pred)
+
+                # Repeat the target graph y by adding a batch dimension for the y_pred batch size.
+                y_repeated = torch.tensor(masked_y, dtype=torch.float32, device=self.device)
+                y_repeated = y_repeated.unsqueeze(0).repeat(y_pred.shape[0], 1, 1, 1)
+
+                simulated_instances_scores.append(self.ae_criterion(y_pred, y_repeated).cpu().numpy())
+            simulated_instances_scores = np.concatenate(simulated_instances_scores)
+            
+            max_ae = simulated_instances_scores.max()
+            # min_ae = simulated_instances_scores.min()
+            
+            simulated_instances_scores = (max_ae - simulated_instances_scores) / (max_ae)
+            
+            scores = np.zeros_like(x[..., 0])
+            
+            for e, s in zip(input_events, simulated_instances_scores):
+                timestep, node = e
+                scores[timestep, node] = s
+
+        return x, target_event, scores
 
     def __len__(self) -> int:
         """Get the length of the dataset.
@@ -167,11 +184,19 @@ def get_dataloader(
     x: np.ndarray,
     y: np.ndarray,
     y_time: np.ndarray,
-    batch_size: int, shuffle: bool
+    spatial_temporal_gnn: SpatialTemporalGNN,
+    scaler: Scaler,
+    device: str,
+    batch_size: int,
+    shuffle: bool
     ) -> DataLoader:
     y_time = _get_encoded_times(y_time)
-    dataset = EventsDataset(x, y, y_time)
+    dataset = EventsDataset(x, y, y_time, spatial_temporal_gnn, scaler, device)
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+
+def _collate_fn(batch):
+    print(batch)
+    return batch
 
 def _get_encoded_times(node_times: np.ndarray) -> np.ndarray:
     """

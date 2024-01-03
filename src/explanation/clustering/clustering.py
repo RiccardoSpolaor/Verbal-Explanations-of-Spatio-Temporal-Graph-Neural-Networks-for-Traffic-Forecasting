@@ -385,7 +385,7 @@ def get_dataset_for_explainability(
 
     # Convert the speed values to miles/h if needed.
     if is_x_kmph:
-        x_for_explainability = x_for_explainability / MPH_TO_KMH_FACTOR
+        x_for_explainability[..., 0] = x_for_explainability[..., 0] / MPH_TO_KMH_FACTOR
     if is_y_kmph:
         y_for_explainability = y_for_explainability / MPH_TO_KMH_FACTOR
 

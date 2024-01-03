@@ -144,7 +144,7 @@ def apply_grid_search(
         print('eps:', p['eps'], 'min_samples:', p['min_samples'])
 
         (avg_within_cluster_variance, avg_connected_cluster_dissimilarity,
-         avg_noise_ratio) = get_explained_dataset_clustering_scores(
+         avg_noise_ratio) = get_dataset_clustering_scores(
              instances, adj_distance_matrix, temporal_distance_matrix,
              p['eps'], p['min_samples'])
 

@@ -5,7 +5,7 @@ and its Node class.
 import math
 from copy import deepcopy
 from collections import defaultdict
-from typing import List, Tuple
+from typing import List, Literal, Tuple, Union
 
 import torch
 import numpy as np
@@ -64,7 +64,7 @@ class Node():
         spatial_temporal_gnn: SpatialTemporalGNN,
         scaler: Scaler,
         mae_criterion: MAE,
-        remove_value: float = 0.
+        remove_value: Union[float, Literal['perturb']] = 0.
         ) -> float:
         """
         Get the reward of the current node in terms of the reciprocal
@@ -85,10 +85,11 @@ class Node():
             The scaler used to scale and un-scale the data.
         mae_criterion : MAE
             The MAE criterion used to compute the reward.
-        remove_value : float, optional
+        remove_value : float | perturb, optional
             The value used to substitute the speed features of the 
-            input events not present in the description of the node,
-            by default -1.
+            input events not present in the description of the node.
+            If 'perturb', the value is sampled from a normal distribution.
+            By default 0.
 
         Returns
         -------
@@ -184,9 +185,10 @@ class MonteCarloTreeSearch:
     exploration_weight : int
         The exploration weight used in the Upper Confidence Bound for
         Trees (UCT) formula.
-    remove_value : float
+    remove_value : float | 'perturb'
         The value used to substitute the speed features of the input
         events not present in the description of the node.
+        If 'perturb', the value is sampled from a normal distribution.
     mae_criterion : MAE
         The MAE criterion used to compute the reward.
     C : DefaultDict
@@ -212,7 +214,7 @@ class MonteCarloTreeSearch:
         scaler: Scaler,
         maximum_leaf_size: int = 20,
         exploration_weight: int = 1,
-        remove_value: float = 0.
+        remove_value: Union[float, Literal['perturb']] = 0.
         ) -> None:
         """
         Initialize the MCTS.
@@ -234,10 +236,11 @@ class MonteCarloTreeSearch:
         exploration_weight : int, optional
             The exploration weight used in the Upper Confidence Bound
             for Trees (UCT) formula, by default 1.
-        remove_value : float, optional
+        remove_value : float | 'perturb', optional
             The value used to substitute the speed features of the
-            input events not present in the description of the node,
-            by default 0.
+            input events not present in the description of the node.
+            If 'perturb', the value is sampled from a normal distribution.
+            By default 0.
         """
         # Set the inputs.
         self.x = x.clone()
@@ -415,7 +418,7 @@ class MonteCarloTreeSearch:
             # Update the total reward of the node.
             self.C[node] += reward
             # Update the reward.
-            reward += 1
+            # reward += 1
 
     def _get_node_by_upper_confidence_bound(self, node: Node) -> Node:
         """
