@@ -6,7 +6,7 @@ import torch
 import numpy as np
 
 from .search import get_best_input_events_subset_by_mcts
-from ..events import remove_features_by_events
+from ..events import remove_features_by_events, get_largest_event_set
 from ...spatial_temporal_gnn.model import SpatialTemporalGNN
 from ...spatial_temporal_gnn.metrics import MAE, RMSE, MAPE
 from ...data.data_processing import Scaler
@@ -378,3 +378,148 @@ def print_scores_report(scores: np.ndarray, dataset_name: str) -> None:
             f'MAE: {scores[start:end, 0].mean():.3g} -',
             f'RMSE: {scores[start:end, 1].mean():.3g} -',
             f'MAPE: {scores[start:end, 2].mean() * 100.:.3g}%')
+
+def print_all_fidelity_plus(
+    x,
+    y,
+    x_explained,
+    spatial_temporal_gnn,
+    scaler,
+    remove_value=0.,
+    divide_by_traffic_cluster_kind: bool = True):
+    mae_criterion = MAE()
+    rmse_criterion = RMSE()
+    mape_criterion = MAPE()
+
+    if divide_by_traffic_cluster_kind:
+        # Get the severe congestion sparsity, the firs third of the data.
+        severe_congestion_mae, severe_congestion_rmse, severe_congestion_mape = get_fidelity_plus(
+            x[:len(x) // 3], 
+            y[:len(x) // 3],
+            x_explained[:len(x) // 3],  
+            spatial_temporal_gnn,
+            scaler,
+            mae_criterion,
+            rmse_criterion,
+            mape_criterion,
+            remove_value)
+        # Get the congestion sparsity, the second third of the data.
+        congestion_mae, congestion_rmse, congestion_mape = get_fidelity_plus(
+            x[len(x) // 3:2 * len(x) // 3],
+            y[len(x) // 3:2 * len(x) // 3],
+            x_explained[len(x) // 3:2 * len(x) // 3],
+            spatial_temporal_gnn, 
+            scaler,
+            mae_criterion,
+            rmse_criterion,
+            mape_criterion,
+            remove_value)
+        # Get the free flow sparsity, the last third of the data.
+        free_flow_mae, free_flow_rmse, free_flow_mape = get_fidelity_plus(
+            x[2 * len(x) // 3:],
+            y[2 * len(x) // 3:],
+            x_explained[2 * len(x) // 3:],
+            spatial_temporal_gnn,
+            scaler,
+            mae_criterion,
+            rmse_criterion,
+            mape_criterion,
+            remove_value)
+        # Compute the average sparsity.
+        mae = (severe_congestion_mae + congestion_mae +
+                    free_flow_mae) / 3
+        rmse = (severe_congestion_rmse + congestion_rmse +
+                    free_flow_rmse) / 3
+        mape = (severe_congestion_mape + congestion_mape +
+                    free_flow_mape) / 3
+        print(
+            f'MAE+: {{ severe_congestion {severe_congestion_mae:.3g} -'
+            f'congestion {congestion_mae:.3g} -'
+            f'free_flow {free_flow_mae:.3g} -',
+            f'total: {mae:.3g}% }} -'
+            f'RMSE+: {{ severe_congestion {severe_congestion_rmse:.3g} -'
+            f'congestion {congestion_rmse:.3g} -'
+            f'free_flow {free_flow_rmse:.3g} -',
+            f'total: {rmse:.3g}% }} -'
+            f'MAPE+: {{ severe_congestion {severe_congestion_mape * 100:.3g}% -'
+            f'congestion {congestion_mape * 100.:.3g}% -'
+            f'free_flow {free_flow_mape * 100.:.3g}% -',
+            f'total: {mape * 100.:.3g}% }}')
+    else:
+        print(
+            f'MAE: {mae:.3g} -',
+            f'RMSE: {rmse:.3g} -',
+            f'MAPE: {mape * 100.:.3g}%')
+        
+def get_fidelity_plus(
+    x, 
+    y, 
+    x_explained, 
+    spatial_temporal_gnn,
+    scaler,
+    mae_criterion,
+    rmse_criterion,
+    mape_criterion,
+    remove_value):
+    x_ = x.copy()
+    # Get the events of the complement of x_explained.
+    x_[x_explained != 0.] = 0.
+    running_mae = 0.
+    running_rmse = 0.
+    running_mape = 0.
+    for i in range(len(x_)):
+        input_events = get_largest_event_set(x_[i])
+    
+        # Evaluate the results.
+        mae, rmse, mape = evaluate(
+            x_[i],
+            y[i],
+            input_events,
+            spatial_temporal_gnn,
+            scaler,
+            mae_criterion,
+            rmse_criterion,
+            mape_criterion,
+            remove_value)
+        running_mae += mae
+        running_rmse += rmse
+        running_mape += mape
+
+    return running_mae / len(x_), running_rmse / len(x_), running_mape / len(x_)
+
+def print_all_sparsity(
+    x,
+    x_explained,
+    divide_by_traffic_cluster_kind: bool = True):
+    if divide_by_traffic_cluster_kind:
+        # Get the severe congestion sparsity, the firs third of the data.
+        severe_congestion_sparsity = get_sparsity(
+            x[:len(x) // 3], x_explained[:len(x) // 3])
+        # Get the congestion sparsity, the second third of the data.
+        congestion_sparsity = get_sparsity(
+            x[len(x) // 3:2 * len(x) // 3],
+            x_explained[len(x) // 3:2 * len(x) // 3])
+        # Get the free flow sparsity, the last third of the data.
+        free_flow_sparsity = get_sparsity(
+            x[2 * len(x) // 3:], x_explained[2 * len(x) // 3:])
+        # Compute the average sparsity.
+        sparsity = (severe_congestion_sparsity + congestion_sparsity +
+                    free_flow_sparsity) / 3
+        print(
+            f'Sparsity: {{ severe_congestion {severe_congestion_sparsity:.3g} -'
+            f'congestion {congestion_sparsity:.3g} -'
+            f'free_flow {free_flow_sparsity:.3g} -',
+            f'total: {sparsity:.3g} }}')
+    else:
+        print(f'Sparsity: {sparsity:.3g}')
+
+
+def get_sparsity(x, x_explained):
+    # Count the number of non-zero values in the original data, by time step in the last axis.
+    x_non_zero = np.count_nonzero(x[..., 0], axis=0)
+    # Count the number of non-zero values in the explained data, by time step.
+    x_explained_non_zero = np.count_nonzero(x_explained[..., 0], axis=0)
+    # Compute the sparsity, by time step.
+    sparsity = 1 - x_explained_non_zero / x_non_zero
+    # Compute the average sparsity.
+    return np.mean(sparsity)
