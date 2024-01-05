@@ -17,6 +17,23 @@ def apply_grid_search(
     adj_distance_matrix: np.ndarray,
     temporal_distance_matrix: np.ndarray
     ) -> None:
+    """
+    Apply the grid search on the clustering of the predicted events for a
+    given dataset.
+
+    Parameters
+    ----------
+    instances : ndarray
+        The spatial-temporal instances to be clustered and evaluated.
+    eps_list : list of float
+        The eps hyperparameter values to be tested.
+    min_samples_list : list of int
+        The min_samples hyperparameter values to be tested.
+    adj_distance_matrix : ndarray
+        The spatial distance matrix of the spatial-temporal graphs.
+    temporal_distance_matrix : ndarray
+        The temporal distance matrix of the spatial-temporal graphs.
+    """
     parameter_grid = ParameterGrid({
         'eps': eps_list, 'min_samples': min_samples_list })
 

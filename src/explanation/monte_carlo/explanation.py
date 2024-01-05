@@ -1,5 +1,5 @@
 from time import time
-from typing import List, Tuple
+from typing import List, Literal, Tuple, Union
 
 from sklearn.model_selection import ParameterGrid
 import torch
@@ -27,7 +27,50 @@ def get_all_explanations(
     exploration_weight: float = 20,
     remove_value: float = 0.,
     divide_by_traffic_cluster_kind: bool = False
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Get the explanations for all the instances in the given dataset.
+
+    Parameters
+    ----------
+    x : ndarray
+        The input dataset.
+    y : ndarray
+        The target dataset.
+    distance_matrix : ndarray
+        The spatial distance matrix among the nodes in the graph.
+    spatial_temporal_gnn : SpatialTemporalGNN
+        The spatial-temporal graph neural network used to predict the target
+        nodes.
+    scaler : Scaler
+        The scaler used to scale and un-scale the input and target datasets.
+    n_rollouts : int, optional
+        The number of rollouts to be performed by the Monte Carlo algorithm,
+        by default 30
+    explanation_size_factor : int, optional
+        The factor used to compute the size of the explanation, by default 3
+    cut_size_factor : int, optional
+        The factor used to compute the size of the cut of the input graph,
+        by default 2
+    exploration_weight : float, optional
+        The weight used to compute the exploration term in the UCT formula,
+        by default 20
+    remove_value : float, optional
+        The value used to remove the speed features not related to the
+        important subgraph, by default 0.
+    divide_by_traffic_cluster_kind : bool, optional
+        Whether to divide the evaluation by traffic cluster kind,
+        by default False
+
+    Returns
+    -------
+    ndarray:
+        The important subgraphs for each instance in the dataset.
+    ndarray:
+        The target values for each instance in the dataset.
+    ndarray:
+        The scores for each instance in the dataset.
+    """
     explained_x, explained_y, scores = [], [], []
 
     mae_criterion = MAE()
@@ -119,21 +162,21 @@ def get_all_explanations(
                 running_mape_free_flow += mape
 
                 free_flows_steps += 1
-            
+
             mae_severe_congestion_avg = 'N/D' if severe_congestions_steps == 0 \
                 else f'{running_mae_severe_congestion / severe_congestions_steps:.3g}'
             rmse_severe_congestion_avg = 'N/D' if severe_congestions_steps == 0 \
                 else f'{running_rmse_severe_congestion / severe_congestions_steps:.3g}'
             mape_severe_congestion_avg = 'N/D' if severe_congestions_steps == 0 \
                 else f'{running_mape_severe_congestion * 100. / severe_congestions_steps:.3g}'
-                
+
             mae_congestion_avg = 'N/D' if congestions_steps == 0 \
                 else f'{running_mae_congestion / congestions_steps:.3g}'
             rmse_congestion_avg = 'N/D' if congestions_steps == 0 \
                 else f'{running_rmse_congestion / congestions_steps:.3g}'
             mape_congestion_avg = 'N/D' if congestions_steps == 0 \
                 else f'{running_mape_congestion * 100. / congestions_steps:.3g}'
-            
+
             mae_free_flow_avg = 'N/D' if free_flows_steps == 0 \
                 else f'{running_mae_free_flow / free_flows_steps:.3g}'
             rmse_free_flow_avg = 'N/D' if free_flows_steps == 0 \
@@ -195,6 +238,47 @@ def get_instance_explanations(
     remove_value: float = 0.,
     verbose: bool = False
     ) -> Tuple[np.ndarray, List[Tuple[int, int]]]:
+    """
+    Get the explanation for the given instance.
+    
+    Parameters
+    ----------
+    x : ndarray
+        The input instance.
+    y : ndarray
+        The target instance.
+    distance_matrix : ndarray
+        The spatial distance matrix among the nodes in the graph.
+    spatial_temporal_gnn : SpatialTemporalGNN
+        The spatial-temporal graph neural network used to predict the target
+        nodes.
+    scaler : Scaler
+        The scaler used to scale and un-scale the input and target datasets.
+    n_rollouts : int, optional
+        The number of rollouts to be performed by the Monte Carlo algorithm,
+        by default 30
+    explanation_size_factor : int, optional
+        The factor used to compute the size of the explanation, by default 3
+    cut_size_factor : int, optional
+        The factor used to compute the size of the cut of the input graph,
+        by default 2
+    exploration_weight : float, optional
+        The weight used to compute the exploration term in the UCT formula,
+        by default 20
+    remove_value : float, optional
+        The value used to remove the speed features not related to the
+        important subgraph, by default 0.
+    verbose : bool, optional
+        Whether to print the progress of the algorithm, by default False
+    
+    Returns
+    -------
+    ndarray
+        The important subgraph for the given instance.
+    list of (int, int)
+        The input events subset obtained by the Monte Carlo algorithm
+        as an explanation for the given target events.
+    """
     explanation_size = (y.flatten() != 0).sum() * explanation_size_factor
     n_top_events = explanation_size * cut_size_factor
 
@@ -362,6 +446,16 @@ def evaluate(
         return mae.item(), rmse.item(), mape.item()
 
 def print_scores_report(scores: np.ndarray, dataset_name: str) -> None:
+    """
+    Print the scores report for the given dataset.
+
+    Parameters
+    ----------
+    scores : ndarray
+        The scores for each instance in the dataset.
+    dataset_name : str
+        The name of the dataset.
+    """
     len_scores = len(scores)
     traffic_cluster_kinds = [
         'Severe Congestions',
@@ -386,7 +480,31 @@ def print_all_fidelity_plus(
     spatial_temporal_gnn,
     scaler,
     remove_value=0.,
-    divide_by_traffic_cluster_kind: bool = True):
+    divide_by_traffic_cluster_kind: bool = True
+    ) -> None:
+    """Compute the fidelity plus of the complement of the important
+    subgraph with respect to the input graph on the whole dataset.
+
+    Parameters
+    ----------
+    x : ndarray
+        The dataset of original input graphs.
+    y : ndarray
+        The dataset of target graphs.
+    x_explained : ndarray
+        The dataset of important subgraphs.
+    spatial_temporal_gnn : SpatialTemporalGNN
+        The spatial-temporal graph neural network used to predict the target
+        values.
+    scaler : Scaler
+        The scaler used to scale and un-scale the input and target datasets.
+    remove_value : float | 'perturb', optional
+        The value used to remove the speed features not related to the input
+        events subset in the input spatial-temporal graph, by default 0.
+    divide_by_traffic_cluster_kind : bool, optional
+        Whether to compute the fidelity plus separately for each traffic
+        cluster kind, by default True.
+    """
     mae_criterion = MAE()
     rmse_criterion = RMSE()
     mape_criterion = MAPE()
@@ -394,9 +512,9 @@ def print_all_fidelity_plus(
     if divide_by_traffic_cluster_kind:
         # Get the severe congestion sparsity, the firs third of the data.
         severe_congestion_mae, severe_congestion_rmse, severe_congestion_mape = get_fidelity_plus(
-            x[:len(x) // 3], 
+            x[:len(x) // 3],
             y[:len(x) // 3],
-            x_explained[:len(x) // 3],  
+            x_explained[:len(x) // 3],
             spatial_temporal_gnn,
             scaler,
             mae_criterion,
@@ -408,7 +526,7 @@ def print_all_fidelity_plus(
             x[len(x) // 3:2 * len(x) // 3],
             y[len(x) // 3:2 * len(x) // 3],
             x_explained[len(x) // 3:2 * len(x) // 3],
-            spatial_temporal_gnn, 
+            spatial_temporal_gnn,
             scaler,
             mae_criterion,
             rmse_criterion,
@@ -450,30 +568,67 @@ def print_all_fidelity_plus(
             f'MAE: {mae:.3g} -',
             f'RMSE: {rmse:.3g} -',
             f'MAPE: {mape * 100.:.3g}%')
-        
+
 def get_fidelity_plus(
-    x, 
-    y, 
-    x_explained, 
-    spatial_temporal_gnn,
-    scaler,
-    mae_criterion,
-    rmse_criterion,
-    mape_criterion,
-    remove_value):
+    x: np.ndarray,
+    y: np.ndarray,
+    x_explained: np.ndarray,
+    spatial_temporal_gnn: SpatialTemporalGNN,
+    scaler: Scaler,
+    mae_criterion: MAE,
+    rmse_criterion: RMSE,
+    mape_criterion: MAPE,
+    remove_value: Union[float, Literal['perturb']]
+    ) -> Tuple[float, float, float]:
+    """
+    Compute the fidelity plus of the complement of the important
+    subgraph with respect to the input graph on the whole dataset.
+
+    Parameters
+    ----------
+    x : ndarray
+        The dataset of original input graphs.
+    y : ndarray
+        The dataset of target graphs.
+    x_explained : ndarray
+        The dataset of important subgraphs.
+    spatial_temporal_gnn : SpatialTemporalGNN
+        The spatial-temporal graph neural network used to predict the target
+        values.
+    scaler : Scaler
+        The scaler used to scale and un-scale the input and target datasets.
+    mae_criterion : MAE
+        The MAE criterion.
+    rmse_criterion : RMSE
+        The RMSE criterion.
+    mape_criterion : MAPE
+        The MAPE criterion.
+    remove_value : float | 'perturb'
+        The value used to remove the speed features not related to the input
+        events subset in the input spatial-temporal graph, by default 0.
+
+    Returns
+    -------
+    float
+        The MAE on the whole dataset considering the fidelity plus.
+    float
+        The RMSE on the whole dataset considering the fidelity plus.
+    float
+        The MAPE on the whole dataset considering the fidelity plus.
+    """
     x_ = x.copy()
     # Get the events of the complement of x_explained.
     x_[x_explained != 0.] = 0.
     running_mae = 0.
     running_rmse = 0.
     running_mape = 0.
-    for i in range(len(x_)):
-        input_events = get_largest_event_set(x_[i])
-    
+    for x__, y_ in zip(x_, y):
+        input_events = get_largest_event_set(x__)
+
         # Evaluate the results.
         mae, rmse, mape = evaluate(
-            x_[i],
-            y[i],
+            x__,
+            y_,
             input_events,
             spatial_temporal_gnn,
             scaler,
@@ -488,9 +643,24 @@ def get_fidelity_plus(
     return running_mae / len(x_), running_rmse / len(x_), running_mape / len(x_)
 
 def print_all_sparsity(
-    x,
-    x_explained,
+    x: np.ndarray,
+    x_explained: np.ndarray,
     divide_by_traffic_cluster_kind: bool = True):
+    """
+    Print the sparsity of the important subgraph with respect to the
+    input graph on the whole dataset. If divide_by_traffic_cluster_kind is
+    True, the sparsity is computed separately for each traffic cluster kind.
+
+    Parameters
+    ----------
+    x : ndarray
+        The dataset of original input graphs.
+    x_explained : ndarray
+        The dataset of important subgraphs.
+    divide_by_traffic_cluster_kind : bool, optional
+        Whether to compute the sparsity separately for each traffic 
+        cluster kind, by default True.
+    """
     if divide_by_traffic_cluster_kind:
         # Get the severe congestion sparsity, the firs third of the data.
         severe_congestion_sparsity = get_sparsity(
@@ -514,7 +684,23 @@ def print_all_sparsity(
         print(f'Sparsity: {sparsity:.3g}')
 
 
-def get_sparsity(x, x_explained):
+def get_sparsity(x: np.ndarray, x_explained: np.ndarray) -> float:
+    """
+    Compute the sparsity of the important subgraph with respect to the
+    original input graph on the whole dataset.
+
+    Parameters
+    ----------
+    x : ndarray
+        The dataset of original input graphs.
+    x_explained : ndarray
+        The dataset of important subgraphs.
+
+    Returns
+    -------
+    float
+        The sparsity measure.
+    """
     # Count the number of non-zero values in the original data, by time step in the last axis.
     x_non_zero = np.count_nonzero(x[..., 0], axis=0)
     # Count the number of non-zero values in the explained data, by time step.
