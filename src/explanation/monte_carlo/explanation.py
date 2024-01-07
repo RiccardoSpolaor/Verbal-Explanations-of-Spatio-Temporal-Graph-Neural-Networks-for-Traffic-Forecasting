@@ -618,18 +618,18 @@ def get_fidelity_plus(
     """
     x_ = x.copy()
     # Get the events of the complement of x_explained.
-    x_[x_explained != 0.] = 0.
+    x_[..., 0][x_explained[..., 0] != 0.] = 0.
     running_mae = 0.
     running_rmse = 0.
     running_mape = 0.
-    for x__, y_ in zip(x_, y):
-        input_events = get_largest_event_set(x__)
+    for x_in, x_complement, y_ in zip(x, x_, y):
+        complement_events = get_largest_event_set(x_complement)
 
         # Evaluate the results.
         mae, rmse, mape = evaluate(
-            x__,
+            x_in,
             y_,
-            input_events,
+            complement_events,
             spatial_temporal_gnn,
             scaler,
             mae_criterion,
