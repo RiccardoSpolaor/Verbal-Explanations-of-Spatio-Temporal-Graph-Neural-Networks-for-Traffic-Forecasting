@@ -150,7 +150,7 @@ Note, the street and kilometrages for the nodes used in the verbal narratives ha
     │   │   │   ├── monte_carlo_tree.py                                         # Module providing the implementation of the MCT.
     │   │   │   └── search.py                                                   # Module providing scripts to perform the MCTS by the explainer.
     │   │   ├── __init__.py
-    │   │   └── events.py # Module providing scripts to perform events selection for the explanations.
+    │   │   └── events.py                                                       # Module providing scripts to perform events selection for the explanations.
     │   ├── spatial_temporal_gnn
     │   │   ├── __init__.py
     │   │   ├── metrics.py                                                      # Module providing metrics to evaluate the performances of the STGNN.
@@ -169,6 +169,8 @@ Note, the street and kilometrages for the nodes used in the verbal narratives ha
     │   │   └── verbal_translation.py                                           # Python module containing scripts to perform the verbal translation of the explanations. 
     │   └── __init__.py
     ├── .gitignore
+    ├── CITATION.cff
+    ├── LICENSE
     └── README.md
 
 ## Dependencies
