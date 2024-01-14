@@ -6,11 +6,6 @@ The research field of eXplainable Artificial Intelligence (XAI) addresses this c
 
 This work focuses on developing an XAI system to explain short-term speed forecasts in traffic networks obtained from STGNNs. The primary emphasis lies in explaining the reasons behind predicted traffic congestions or free flows. Key information justifying these predictions is extracted from the input traffic network in the form of a significant subgraph. The information of the subgraph is finally summarized and it is then converted into text using a template-based approach.
 
-<!--<div align="center">
-
-  ![](images/sample-data.png)
-
-</div>-->
 For more detailed informations about the used functions, look into the corresponding docstrings inside the python files, inside the `src` folder.
 
 ## Description
