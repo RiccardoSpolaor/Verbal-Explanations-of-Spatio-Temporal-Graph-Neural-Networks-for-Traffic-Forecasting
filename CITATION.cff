@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Spolaor"
+  given-names: "Riccardo"
+title: "Verbal Explanations of Spatio-Temporal Graph Neural Networks for Traffic Forecasting"
+version: 1.0.0
+date-released: 2024-02-02
+url: "https://github.com/RiccardoSpolaor/Verbal-Explanations-of-Spatio-Temporal-Graph-Neural-Networks-for-Traffic-Forecasting"
