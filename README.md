@@ -22,7 +22,7 @@ This work aims to develop a new *XAI* system tailored for non-technical users, e
 
 </div>
 
- The STGNN used in the experiment are built following the paper [cite]. Two extensive real world datasets are used for the experiment, namely *METR-LA* and *PEMS_BAY* previously used in [cite].
+ The STGNNs used in the experiment are built following the paper [Traffic Flow Prediction via Spatial Temporal Graph Neural Network](https://dl.acm.org/doi/10.1145/3366423.3380186). Two extensive real world datasets are used for the experiment, namely *METR-LA* and *PEMS_BAY* previously used in [Diffusion Convolutional Recurrent Neural Network: Data-Driven Traffic Forecasting](https://arxiv.org/abs/1707.01926).
 
 <div align="center">
 
@@ -32,7 +32,7 @@ This work aims to develop a new *XAI* system tailored for non-technical users, e
 
 </div>
 
-To achieve this goal, the system uses a transparent and easily comprehensible *post-hoc model inspection* explainer to provide explanations which can be more easily conveyed to the target users and which consider both the local and global scope of explanations. These explanations are performed on extracted events in the predicted output and they take the visual form of an *important subgraph* within the input traffic network data, highlighting information crucial for the forecasts. The global aspect of the search is obtained by cutting the input graph in a subset according to *traffic laws* measuring correlations between input and output nodes. The obtained subgraph is then furtherly pruned by a localized *Monte Carlo Tree Search (MCTS)*, obtaining a refined explanation for the output event. The obtained refined subgraph is finally divided in clusters illustrating events that led to the outcome. The explainer takes inspiration from [cite], but deeply modifies its implementation.
+To achieve this goal, the system uses a transparent and easily comprehensible *post-hoc model inspection* explainer to provide explanations which can be more easily conveyed to the target users and which consider both the local and global scope of explanations. These explanations are performed on extracted events in the predicted output and they take the visual form of an *important subgraph* within the input traffic network data, highlighting information crucial for the forecasts. The global aspect of the search is obtained by cutting the input graph in a subset according to *traffic laws* measuring correlations between input and output nodes. The obtained subgraph is then furtherly pruned by a localized *Monte Carlo Tree Search (MCTS)*, obtaining a refined explanation for the output event. The obtained refined subgraph is finally divided in clusters illustrating events that led to the outcome. The explainer takes inspiration from [Explaining Temporal Graph Models through an Explorer-Navigator Framework](https://openreview.net/forum?id=BR_ZhvcYbGJ), but deeply modifies its implementation.
 
 <div align="center">
 
@@ -70,6 +70,35 @@ The project uses the following metrics to evaluate the STGNNs performances:
 * Root Mean Squared Error (RMSE)
 * Mean Absolute Percentage Error (MAPE)
 
+The test results for different time horizons are reported here.
+<div align="center">
+
+| Dataset  | Metric | 15min | 30min | 60min  |
+|----------|--------|-------|-------|--------|
+| METR-LA  | MAE    | 2.92  | 3.27  | 3.86   |
+|          | MAPE   | 7.8%  | 9.05% | 11.5%  |
+|          | RMSE   | 5.55  | 6.4   | 7.74   |
+| PEMS-BAY | MAE    | 1.18  | 1.49  | 1.92   |
+|          | MAPE   | 2.43% | 3.26% | 4.54%  |
+|          | RMSE   | 2.48  | 3.36  | 4.43   |
+
+</div>
+
+
+The test results for different event kinds are reported here.
+<div align="center">
+
+| Dataset  | Metric | Severe Congestion  | Congestion | Free Flow |
+|----------|--------|--------------------|------------|-----------|
+| METR-LA  | MAE    | 12.2               | 5.21       | 1.96      |
+|          | MAPE   | 65.1%              | 10.6%      | 3.02%     |
+|          | RMSE   | 17.9               | 7.73       | 4.16      |
+| PEMS-BAY | MAE    | 10.6               | 4.46       | 1.07      |
+|          | MAPE   | 49.1%              | 9.23%      | 1.64%     |
+|          | RMSE   | 15.8               | 7.05       | 1.95      |
+
+</div>
+
 The *explainer* are fine tuned by applying grid search on the input graphs of events extracted from the predictions of the training set. Subsequently, the explanations of the explainers are evaluated on selected predictions of the validation and test set.
 
 The project uses the following metrics to evaluate the explainer performances:
@@ -78,6 +107,39 @@ The project uses the following metrics to evaluate the explainer performances:
 * Fidelity $^+$
 * Sparsity
 * Average Time
+
+The test results for different event kinds are reported here.
+<div align="center">
+
+| Dataset  | Fidelity $^-$ | Severe Congestion  | Congestion | Free Flow | Total |
+|----------|---------------|--------------------|------------|-----------|-------|
+| METR-LA  | MAE $^-$      | 3.21               | 1.65       | 0.713     | 1.84  |
+|          | MAPE $^-$     | 14.1%              | 3.45%      | 1.09%     | 6.14% |
+|          | RMSE $^-$     | 3.82               | 2.06       | 0.881     | 2.24  |
+| PEMS-BAY | MAE $^-$      | 12.5               | 2.65       | 1.97      | 5.67  |
+|          | MAPE $^-$     | 59.3%              | 5.24%      | 2.93%     | 22.4% |
+|          | RMSE $^-$     | 12.9               | 3.13       | 2.15      | 6.02  |
+
+| Dataset  | Fidelity $^+$ | Severe Congestion  | Congestion | Free Flow | Total |
+|----------|---------------|--------------------|------------|-----------|-------|
+| METR-LA  | MAE $^+$      | 19.1               | 9.68       | 2.96      | 10.6  |
+|          | MAPE $^+$     | 86.2%              | 20.4%      | 4.54%     | 37.1% |
+|          | RMSE $^+$     | 20.9               | 10.6       | 3.5       | 11.7  |
+| PEMS-BAY | MAE $^+$      | 17.2               | 9.6        | 41.8      | 22.8  |
+|          | MAPE $^+$     | 73.1%              | 19.2%      | 63.2%     | 51.8% |
+|          | RMSE $^+$     | 19.1               | 10.7       | 46        | 25.3  |
+
+| Dataset  | Sparsity |
+|----------|----------|
+| METR-LA  | 0.985    |
+| PEMS-BAY | 0.985    |
+
+| Dataset  | Average Explanation Time |
+|----------|--------------------------|
+| METR-LA  | 8.88 s                   |
+| PEMS-BAY | 11.6 s                   |
+
+</div>
 
 ## Interface
 
